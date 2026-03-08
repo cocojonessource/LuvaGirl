@@ -201,10 +201,35 @@ export class Start extends Phaser.Scene {
             }
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
-        this.addButtonFeedback(this.startButton, () => {
-            this.startGame();
-        }, '#ffff00', '#ff69b4');
+       this.startButton.on('pointerdown', () => {
+    this.startButton.setColor('#ff69b4');
+    this.startButton.setScale(0.96);
+
+    if (this.sound && this.cache.audio.exists('bgMusic')) {
+        if (!this.bgMusic || !this.bgMusic.isPlaying) {
+            this.bgMusic = this.sound.add('bgMusic', {
+                loop: true,
+                volume: 0.55
+            });
+            this.bgMusic.play();
+        }
     }
+
+    this.startGame();
+});
+
+this.startButton.on('pointerup', () => {
+    this.startButton.setScale(1);
+});
+
+this.startButton.on('pointerout', () => {
+    this.startButton.setColor('#ffff00');
+    this.startButton.setScale(1);
+});
+
+this.startButton.on('pointerover', () => {
+    this.startButton.setColor('#ff69b4');
+});
 
     addButtonFeedback(button, onPress, baseColor, hoverColor = '#ff69b4') {
         const baseScale = 1;
@@ -242,7 +267,6 @@ export class Start extends Phaser.Scene {
         this.presaveButton.destroy();
 
         this.setupHUD();
-        this.startBackgroundMusic();
 
         // main spawn
         this.spawnTimer = this.time.addEvent({
