@@ -15,16 +15,16 @@ export class Start extends Phaser.Scene {
         this.load.image('LuvaGirlBad', 'assets/luvagirlbad.png');
         this.load.image('LuvaGirlBonus', 'assets/luvagirlbonus.png');
 
-        this.load.image('heartBlue', 'assets/Blue.png');
-        this.load.image('heartGreen', 'assets/Green.png');
-        this.load.image('heartPink', 'assets/Pink.png');
-        this.load.image('heartYellow', 'assets/Yellow.png');
+        this.load.image('heartBlue', 'assets/blue.png');
+        this.load.image('heartGreen', 'assets/green.png');
+        this.load.image('heartPink', 'assets/pink.png');
+        this.load.image('heartYellow', 'assets/yellow.png');
 
         this.load.image('lifeFull', 'assets/Lifescore.png');
         this.load.image('lifeLost', 'assets/Lostscore.png');
 
         this.load.image('tomato', 'assets/Tomotoe.png');
-        this.load.image('grammy', 'assets/Grammy.png');
+        this.load.image('grammy', 'assets/grammy.png');
         this.load.image('ramenItem', 'assets/Ramen.png');
         this.load.image('noteItem', 'assets/note.png');
 
