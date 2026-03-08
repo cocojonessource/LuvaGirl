@@ -30,6 +30,7 @@ export class Start extends Phaser.Scene {
 
         this.load.audio('gameOverSound', 'assets/GameOver.mp3');
         this.load.audio('bgMusic', 'assets/BGmusic.mp3');
+        this.load.audio('arcadeMusic', 'assets/Arcade.mp3');
     }
 
     create() {
@@ -39,6 +40,7 @@ export class Start extends Phaser.Scene {
         this.background = this.add.tileSprite(180, 320, 360, 640, 'backgroundgames1');
 
         this.gameStarted = false;
+        this.gameCountdownActive = false;
         this.isGameOver = false;
         this.reactionTimer = null;
 
@@ -51,47 +53,11 @@ export class Start extends Phaser.Scene {
         this.homeMoveVisualTimer = null;
         this.homeMoveVisualDelay = 120;
 
-        this.input.on('pointerdown', (pointer) => {
-            if (this.isGameOver) return;
-
-            if (!this.gameStarted) {
-                this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
-                this.setHomeMoveVisualActive();
-                return;
-            }
-
-            if (this.gameStarted) {
-                this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
-            }
-        });
-
-        this.input.on('pointermove', (pointer) => {
-            if (this.isGameOver) return;
-
-            if (!this.gameStarted) {
-                if (pointer.isDown) {
-                    this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
-                    this.setHomeMoveVisualActive();
-                }
-                return;
-            }
-
-            if (pointer.isDown && this.gameStarted) {
-                this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
-            }
-        });
-
-        this.input.on('pointerup', () => {
-            if (!this.gameStarted) {
-                this.scheduleHomeIdleRestore();
-            }
-        });
-
         this.items = this.add.group();
 
         this.heartsCaught = 0;
         this.lives = 3;
-        this.currentFallSpeed = 2;
+        this.currentFallSpeed = 3;
 
         this.starLevelShown = false;
         this.superStarShown = false;
@@ -112,6 +78,7 @@ export class Start extends Phaser.Scene {
         this.heartKeys = ['heartBlue', 'heartGreen', 'heartPink', 'heartYellow'];
 
         this.bgMusic = null;
+        this.arcadeMusic = null;
         this.lifeIcons = [];
 
         this.catchZoneY = this.ship.y + 28;
@@ -125,10 +92,65 @@ export class Start extends Phaser.Scene {
         this.lastTomatoLane = null;
         this.lastSpawnType = null;
 
+        this.firstTomatoTriggered = false;
+        this.activeMusicMode = 'home';
+
+        this.input.on('pointerdown', (pointer) => {
+            this.retryActiveMusic();
+
+            if (this.isGameOver) return;
+
+            if (!this.gameStarted && !this.gameCountdownActive) {
+                this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
+                this.setHomeMoveVisualActive();
+                return;
+            }
+
+            if (this.gameStarted) {
+                this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
+            }
+        });
+
+        this.input.on('pointermove', (pointer) => {
+            if (this.isGameOver) return;
+
+            if (!this.gameStarted && !this.gameCountdownActive) {
+                if (pointer.isDown) {
+                    this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
+                    this.setHomeMoveVisualActive();
+                }
+                return;
+            }
+
+            if (pointer.isDown && this.gameStarted) {
+                this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
+            }
+        });
+
+        this.input.on('pointerup', () => {
+            if (!this.gameStarted && !this.gameCountdownActive) {
+                this.scheduleHomeIdleRestore();
+            }
+        });
+
+        this.installBrowserAudioFallbacks();
+        this.tryStartHomeMusic();
         this.createStartScreen();
+        this.playHomeScreenIntro();
     }
 
     createStartScreen() {
+        this.startScreenElements = [];
+
+        this.introTitle = this.add.text(180, 240, 'Coco Jones\nLuva Girl', {
+            fontSize: '34px',
+            align: 'center',
+            color: '#ffd6f2',
+            stroke: '#ff69b4',
+            strokeThickness: 5,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 16, fill: true }
+        }).setOrigin(0.5).setAlpha(0);
+
         this.startTitle = this.add.text(180, 92, 'Coco Jones\nLuva Girl', {
             fontSize: '30px',
             align: 'center',
@@ -193,6 +215,14 @@ export class Start extends Phaser.Scene {
             window.open('https://link.fans/luvagirl', '_blank');
         }, '#ffd6f2', '#c8a2ff');
 
+        this.presaveArrow = this.add.text(52, 372, '▶', {
+            fontSize: '26px',
+            color: '#ffff66',
+            stroke: '#ff69b4',
+            strokeThickness: 3,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 10, fill: true }
+        }).setOrigin(0.5);
+
         this.startButton = this.add.text(180, 420, 'Start Game', {
             fontSize: '22px',
             backgroundColor: '#333',
@@ -206,6 +236,69 @@ export class Start extends Phaser.Scene {
         this.addButtonFeedback(this.startButton, () => {
             this.startGame();
         }, '#ffff00', '#ff69b4');
+
+        this.startScreenElements.push(
+            this.startTitle,
+            this.howToTitle,
+            this.howToLine1,
+            this.howToLine2,
+            this.howToLine3,
+            this.madeByStart,
+            this.presaveButton,
+            this.presaveArrow,
+            this.startButton
+        );
+
+        this.startScreenElements.forEach((el) => el.setAlpha(0));
+
+        this.tweens.add({
+            targets: this.presaveArrow,
+            angle: { from: -10, to: 10 },
+            x: { from: 48, to: 58 },
+            duration: 550,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+    }
+
+    playHomeScreenIntro() {
+        this.cameras.main.fadeIn(320, 0, 0, 0);
+        this.ship.setAlpha(0);
+
+        this.tweens.add({
+            targets: this.introTitle,
+            alpha: { from: 0, to: 1 },
+            scale: { from: 0.88, to: 1 },
+            duration: 420,
+            ease: 'Power2',
+            onComplete: () => {
+                this.time.delayedCall(520, () => {
+                    this.tweens.add({
+                        targets: this.introTitle,
+                        alpha: 0,
+                        scale: 1.06,
+                        duration: 320,
+                        ease: 'Power2',
+                        onComplete: () => {
+                            this.tweens.add({
+                                targets: [this.ship, ...this.startScreenElements],
+                                alpha: { from: 0, to: 1 },
+                                duration: 360,
+                                ease: 'Power2',
+                                onComplete: () => {
+                                    this.tryStartHomeMusic();
+
+                                    this.time.delayedCall(220, () => {
+                                        this.tryStartHomeMusic();
+                                    });
+                                }
+                            });
+                        }
+                    });
+                });
+            }
+        });
     }
 
     addButtonFeedback(button, onPress, baseColor, hoverColor = '#ff69b4') {
@@ -231,8 +324,46 @@ export class Start extends Phaser.Scene {
         });
     }
 
+    installBrowserAudioFallbacks() {
+        const retry = () => {
+            this.retryActiveMusic();
+        };
+
+        this._browserAudioRetry = retry;
+
+        if (typeof window !== 'undefined') {
+            window.addEventListener('pointerdown', retry);
+            window.addEventListener('touchstart', retry, { passive: true });
+            window.addEventListener('click', retry);
+
+            this._visibilityHandler = () => {
+                if (!document.hidden) {
+                    this.retryActiveMusic();
+                }
+            };
+
+            document.addEventListener('visibilitychange', this._visibilityHandler);
+        }
+    }
+
+    cleanupBrowserAudioFallbacks() {
+        if (typeof window === 'undefined') return;
+
+        if (this._browserAudioRetry) {
+            window.removeEventListener('pointerdown', this._browserAudioRetry);
+            window.removeEventListener('touchstart', this._browserAudioRetry);
+            window.removeEventListener('click', this._browserAudioRetry);
+            this._browserAudioRetry = null;
+        }
+
+        if (this._visibilityHandler) {
+            document.removeEventListener('visibilitychange', this._visibilityHandler);
+            this._visibilityHandler = null;
+        }
+    }
+
     setHomeMoveVisualActive() {
-        if (this.gameStarted || this.isGameOver) return;
+        if (this.gameStarted || this.isGameOver || this.gameCountdownActive) return;
 
         this.homePointerMoving = true;
 
@@ -258,7 +389,7 @@ export class Start extends Phaser.Scene {
     }
 
     scheduleHomeIdleRestore() {
-        if (this.gameStarted || this.isGameOver) return;
+        if (this.gameStarted || this.isGameOver || this.gameCountdownActive) return;
 
         if (this.homeMoveVisualTimer) {
             this.homeMoveVisualTimer.remove(false);
@@ -274,7 +405,7 @@ export class Start extends Phaser.Scene {
     }
 
     restoreHomeIdleIfNeeded() {
-        if (this.gameStarted || this.isGameOver) return;
+        if (this.gameStarted || this.isGameOver || this.gameCountdownActive) return;
         if (this.homePointerMoving) return;
         if (this.reactionTimer) return;
 
@@ -286,40 +417,200 @@ export class Start extends Phaser.Scene {
         }
     }
 
+    tryStartHomeMusic() {
+        if (this.isGameOver || this.gameStarted || this.gameCountdownActive) return;
+        if (!this.sound || !this.cache.audio.exists('arcadeMusic')) return;
+
+        this.activeMusicMode = 'home';
+
+        if (this.bgMusic && this.bgMusic.isPlaying) {
+            this.bgMusic.stop();
+        }
+
+        if (!this.arcadeMusic) {
+            this.arcadeMusic = this.sound.add('arcadeMusic', { loop: true, volume: 0.55 });
+        }
+
+        if (!this.arcadeMusic.isPlaying) {
+            try {
+                this.arcadeMusic.play();
+            } catch (e) {}
+        }
+    }
+
+    stopHomeMusic() {
+        if (this.arcadeMusic && this.arcadeMusic.isPlaying) {
+            this.arcadeMusic.stop();
+        }
+    }
+
+    tryStartGameplayMusic() {
+        if (this.isGameOver || !this.sound || !this.cache.audio.exists('bgMusic')) return;
+
+        this.activeMusicMode = 'game';
+
+        if (this.arcadeMusic && this.arcadeMusic.isPlaying) {
+            this.arcadeMusic.stop();
+        }
+
+        if (!this.bgMusic) {
+            this.bgMusic = this.sound.add('bgMusic', { loop: true, volume: 0.55 });
+        }
+
+        if (!this.bgMusic.isPlaying) {
+            try {
+                this.bgMusic.play();
+            } catch (e) {}
+        }
+    }
+
+    retryActiveMusic() {
+        if (this.isGameOver) return;
+
+        if (this.activeMusicMode === 'home' && !this.gameStarted && !this.gameCountdownActive) {
+            this.tryStartHomeMusic();
+            return;
+        }
+
+        if (this.activeMusicMode === 'game') {
+            this.tryStartGameplayMusic();
+        }
+    }
+
     startGame() {
-        this.gameStarted = true;
+        if (this.gameStarted || this.gameCountdownActive || this.isGameOver) return;
+
+        this.gameCountdownActive = true;
+        this.activeMusicMode = 'game';
 
         if (this.homeMoveVisualTimer) {
             this.homeMoveVisualTimer.remove(false);
             this.homeMoveVisualTimer = null;
         }
+
         this.homePointerMoving = false;
         this.ship.setTexture('LuvaGirl');
         this.ship.setScale(0.22);
 
-        this.startTitle.destroy();
-        this.howToTitle.destroy();
-        this.howToLine1.destroy();
-        this.howToLine2.destroy();
-        this.howToLine3.destroy();
-        this.madeByStart.destroy();
-        this.startButton.destroy();
-        this.presaveButton.destroy();
+        this.stopHomeMusic();
+        this.destroyStartScreen();
+        this.showPreCountdownHomeScreen();
+    }
+
+    destroyStartScreen() {
+        const startElements = [
+            this.introTitle,
+            this.startTitle,
+            this.howToTitle,
+            this.howToLine1,
+            this.howToLine2,
+            this.howToLine3,
+            this.madeByStart,
+            this.startButton,
+            this.presaveButton,
+            this.presaveArrow
+        ];
+
+        startElements.forEach((el) => {
+            if (el && el.active) {
+                el.destroy();
+            }
+        });
+    }
+
+    showPreCountdownHomeScreen() {
+        this.preCountdownOverlay = this.add.rectangle(180, 320, 360, 640, 0x000000, 0.22).setAlpha(0);
+
+        this.preCountdownTitle = this.add.text(180, 250, 'Coco Jones\nLuva Girl', {
+            fontSize: '34px',
+            align: 'center',
+            color: '#ffd6f2',
+            stroke: '#ff69b4',
+            strokeThickness: 5,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 16, fill: true }
+        }).setOrigin(0.5).setAlpha(0);
+
+        this.tweens.add({
+            targets: [this.preCountdownOverlay, this.preCountdownTitle],
+            alpha: 1,
+            duration: 220,
+            onComplete: () => {
+                this.time.delayedCall(700, () => {
+                    this.tweens.add({
+                        targets: [this.preCountdownOverlay, this.preCountdownTitle],
+                        alpha: 0,
+                        duration: 220,
+                        onComplete: () => {
+                            if (this.preCountdownOverlay) this.preCountdownOverlay.destroy();
+                            if (this.preCountdownTitle) this.preCountdownTitle.destroy();
+                            this.runCountdown();
+                        }
+                    });
+                });
+            }
+        });
+    }
+
+    runCountdown() {
+        const countdownText = this.add.text(180, 320, '3', {
+            fontSize: '58px',
+            color: '#ffff66',
+            stroke: '#ff69b4',
+            strokeThickness: 5,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 18, fill: true }
+        }).setOrigin(0.5);
+
+        const numbers = ['3', '2', '1'];
+        let index = 0;
+
+        const showNext = () => {
+            if (index >= numbers.length) {
+                countdownText.destroy();
+                this.beginGameplay();
+                return;
+            }
+
+            countdownText.setText(numbers[index]);
+            countdownText.setScale(0.72);
+            countdownText.setAlpha(1);
+
+            this.tweens.add({
+                targets: countdownText,
+                scale: 1.05,
+                alpha: 1,
+                duration: 180,
+                ease: 'Power2'
+            });
+
+            index += 1;
+            this.time.delayedCall(360, showNext);
+        };
+
+        showNext();
+    }
+
+    beginGameplay() {
+        this.gameCountdownActive = false;
+        this.gameStarted = true;
 
         this.setupHUD();
-        this.startBackgroundMusic();
+        this.tryStartGameplayMusic();
+
+        this.spawnWave(2);
 
         this.spawnTimer = this.time.addEvent({
             delay: 560,
-            callback: this.spawnItem,
+            callback: () => {
+                this.spawnWave(2);
+            },
             callbackScope: this,
             loop: true
         });
 
         this.extraSpawnTimer = this.time.addEvent({
-            delay: 980,
+            delay: 720,
             callback: () => {
-                if (this.isGameOver) return;
+                if (this.isGameOver || !this.gameStarted) return;
 
                 let activeFalling = 0;
 
@@ -331,21 +622,12 @@ export class Start extends Phaser.Scene {
                 });
 
                 if (activeFalling < 2) {
-                    this.spawnItem();
+                    this.spawnWave(2 - activeFalling);
                 }
             },
             callbackScope: this,
             loop: true
         });
-    }
-
-    startBackgroundMusic() {
-        if (this.sound && this.cache.audio.exists('bgMusic')) {
-            if (!this.bgMusic || !this.bgMusic.isPlaying) {
-                this.bgMusic = this.sound.add('bgMusic', { loop: true, volume: 0.55 });
-                this.bgMusic.play();
-            }
-        }
     }
 
     setupHUD() {
@@ -436,10 +718,12 @@ export class Start extends Phaser.Scene {
         if (this.ship.x > 330) this.ship.x = 330;
 
         if (!this.gameStarted) {
-            if (movedThisFrame) {
-                this.setHomeMoveVisualActive();
-            } else {
-                this.restoreHomeIdleIfNeeded();
+            if (!this.gameCountdownActive) {
+                if (movedThisFrame) {
+                    this.setHomeMoveVisualActive();
+                } else {
+                    this.restoreHomeIdleIfNeeded();
+                }
             }
             return;
         }
@@ -485,23 +769,31 @@ export class Start extends Phaser.Scene {
         this.checkLevelProgress();
     }
 
-    getSpawnX(type) {
+    getSpawnX(type, usedLaneIndexes = []) {
         let laneChoices = [...this.spawnLanes];
+
+        if (usedLaneIndexes.length > 0) {
+            laneChoices = laneChoices.filter((_, index) => !usedLaneIndexes.includes(index));
+        }
 
         if (type === 'tomato') {
             if (this.lastTomatoLane !== null) {
                 laneChoices = laneChoices.filter((_, index) => Math.abs(index - this.lastTomatoLane) >= 2);
             }
             if (laneChoices.length === 0) {
-                laneChoices = [...this.spawnLanes];
+                laneChoices = [...this.spawnLanes].filter((_, index) => !usedLaneIndexes.includes(index));
             }
         } else {
             if (this.lastSpawnLane !== null) {
                 laneChoices = laneChoices.filter((_, index) => index !== this.lastSpawnLane);
             }
             if (laneChoices.length === 0) {
-                laneChoices = [...this.spawnLanes];
+                laneChoices = [...this.spawnLanes].filter((_, index) => !usedLaneIndexes.includes(index));
             }
+        }
+
+        if (laneChoices.length === 0) {
+            laneChoices = [...this.spawnLanes];
         }
 
         const x = Phaser.Utils.Array.GetRandom(laneChoices);
@@ -515,14 +807,30 @@ export class Start extends Phaser.Scene {
             this.lastTomatoLane = null;
         }
 
-        return x;
+        return { x, laneIndex };
     }
 
-    spawnItem() {
-        if (this.isGameOver) return;
+    spawnWave(count = 2) {
+        if (this.isGameOver || !this.gameStarted) return;
 
-        const type = this.chooseItemType();
-        const x = this.getSpawnX(type);
+        const usedLaneIndexes = [];
+        const spawnCount = Math.max(1, count);
+
+        for (let i = 0; i < spawnCount; i++) {
+            const type = this.chooseItemType();
+            const created = this.spawnSpecificItem(type, usedLaneIndexes);
+
+            if (created && typeof created.laneIndex === 'number') {
+                usedLaneIndexes.push(created.laneIndex);
+            }
+        }
+    }
+
+    spawnSpecificItem(type, usedLaneIndexes = []) {
+        if (this.isGameOver) return null;
+
+        const spawnData = this.getSpawnX(type, usedLaneIndexes);
+        const x = spawnData.x;
 
         let item;
 
@@ -599,10 +907,15 @@ export class Start extends Phaser.Scene {
             }
         }
 
-        if (!item) return;
+        if (!item) return null;
 
         this.lastSpawnType = type;
         this.items.add(item);
+
+        return {
+            item,
+            laneIndex: spawnData.laneIndex
+        };
     }
 
     chooseItemType() {
@@ -668,6 +981,7 @@ export class Start extends Phaser.Scene {
         const value = item.itemValue;
         const x = item.x;
         const y = item.y;
+        const itemType = item.itemType;
 
         item.destroy();
 
@@ -675,8 +989,14 @@ export class Start extends Phaser.Scene {
             this.heartsCaught += value;
             this.heartsNumberText.setText(String(this.heartsCaught));
 
-            if (item.itemType === 'ramen' || item.itemType === 'music') {
+            if (itemType === 'ramen' || itemType === 'music') {
                 this.showPlayerReaction('bonus');
+                this.triggerVibration([35, 25, 45]);
+            }
+
+            if (this.heartsCaught >= 5 && !this.firstTomatoTriggered) {
+                this.firstTomatoTriggered = true;
+                this.spawnSpecificItem('tomato');
             }
 
             if (value === 2) {
@@ -804,7 +1124,7 @@ export class Start extends Phaser.Scene {
         }
 
         if (this.heartsCaught >= 60) {
-            this.currentFallSpeed = 8;
+            this.currentFallSpeed = 9;
             if (!this.iconLevelShown) {
                 this.iconLevelShown = true;
                 this.currentLevelName = 'ICON Level';
@@ -823,7 +1143,7 @@ export class Start extends Phaser.Scene {
         }
 
         if (this.heartsCaught >= 20) {
-            this.currentFallSpeed = 6;
+            this.currentFallSpeed = 7;
         }
 
         if (this.heartsCaught >= 15 && !this.starLevelShown) {
@@ -834,7 +1154,7 @@ export class Start extends Phaser.Scene {
         }
 
         if (this.heartsCaught >= 5) {
-            this.currentFallSpeed = 4;
+            this.currentFallSpeed = 5;
         }
     }
 
@@ -929,6 +1249,9 @@ export class Start extends Phaser.Scene {
         if (this.isGameOver) return;
 
         this.isGameOver = true;
+        this.gameStarted = false;
+        this.gameCountdownActive = false;
+        this.activeMusicMode = 'none';
 
         if (this.spawnTimer) this.spawnTimer.remove(false);
         if (this.extraSpawnTimer) this.extraSpawnTimer.remove(false);
@@ -943,6 +1266,11 @@ export class Start extends Phaser.Scene {
             this.homeMoveVisualTimer = null;
         }
 
+        if (this.gameOverBlinkTimer) {
+            this.gameOverBlinkTimer.remove(false);
+            this.gameOverBlinkTimer = null;
+        }
+
         this.items.children.iterate((item) => {
             if (item) item.destroy();
         });
@@ -950,6 +1278,8 @@ export class Start extends Phaser.Scene {
         if (this.endGameButton) {
             this.endGameButton.destroy();
         }
+
+        this.stopHomeMusic();
 
         if (this.bgMusic && this.bgMusic.isPlaying) {
             this.bgMusic.stop();
@@ -1022,6 +1352,24 @@ export class Start extends Phaser.Scene {
             shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 12, fill: true }
         }).setOrigin(0.5);
 
+        const endPresaveArrow = this.add.text(52, 420, '▶', {
+            fontSize: '24px',
+            color: '#ffff66',
+            stroke: '#ff69b4',
+            strokeThickness: 3,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 10, fill: true }
+        }).setOrigin(0.5);
+
+        this.tweens.add({
+            targets: endPresaveArrow,
+            angle: { from: -10, to: 10 },
+            x: { from: 48, to: 58 },
+            duration: 550,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
         this.add.text(180, 420, 'Presave Luva Girl', {
             fontSize: '18px',
             color: '#ffff00',
@@ -1055,6 +1403,7 @@ export class Start extends Phaser.Scene {
         }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
         playAgain.on('pointerdown', () => {
+            this.cleanupBrowserAudioFallbacks();
             this.scene.restart();
         });
 
