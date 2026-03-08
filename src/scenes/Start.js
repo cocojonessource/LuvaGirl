@@ -12,8 +12,8 @@ export class Start extends Phaser.Scene {
         this.load.image('closeover', 'assets/closeover.png');
 
         this.load.image('LuvaGirl', 'assets/LuvaGirl.png');
-        this.load.image('LuvaGirlBad', 'assets/Luvagirlbad.png');
-        this.load.image('LuvaGirlBonus', 'assets/Luvagirlbonus.png');
+        this.load.image('LuvaGirlBad', 'assets/LuvaGirlbad.png');
+        this.load.image('LuvaGirlBonus', 'assets/LuvaGirlbonus.png');
 
         this.load.image('heartBlue', 'assets/blue.png');
         this.load.image('heartGreen', 'assets/green.png');
