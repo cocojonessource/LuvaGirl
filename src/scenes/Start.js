@@ -43,9 +43,13 @@ export class Start extends Phaser.Scene {
         this.gameCountdownActive = false;
         this.isGameOver = false;
         this.reactionTimer = null;
+        this.introGateActive = true;
+        this.homeScreenActive = false;
+        this.isUnlockingIntroGate = false;
 
         this.ship = this.add.image(180, 550, 'LuvaGirl').setScale(0.22);
         this.shipBaseY = 550;
+        this.ship.setAlpha(0);
 
         this.cursors = this.input.keyboard.createCursorKeys();
 
@@ -99,6 +103,7 @@ export class Start extends Phaser.Scene {
             this.retryActiveMusic();
 
             if (this.isGameOver) return;
+            if (this.introGateActive) return;
 
             if (!this.gameStarted && !this.gameCountdownActive) {
                 this.ship.x = Phaser.Math.Clamp(pointer.x, 30, 330);
@@ -113,6 +118,7 @@ export class Start extends Phaser.Scene {
 
         this.input.on('pointermove', (pointer) => {
             if (this.isGameOver) return;
+            if (this.introGateActive) return;
 
             if (!this.gameStarted && !this.gameCountdownActive) {
                 if (pointer.isDown) {
@@ -128,6 +134,8 @@ export class Start extends Phaser.Scene {
         });
 
         this.input.on('pointerup', () => {
+            if (this.introGateActive) return;
+
             if (!this.gameStarted && !this.gameCountdownActive) {
                 this.scheduleHomeIdleRestore();
             }
@@ -136,6 +144,183 @@ export class Start extends Phaser.Scene {
         this.installBrowserAudioFallbacks();
         this.tryStartHomeMusic();
         this.createStartScreen();
+        this.createIntroGate();
+        this.showIntroGate();
+    }
+
+    createIntroGate() {
+        this.introGateElements = [];
+
+        this.introGateOverlay = this.add.rectangle(180, 320, 360, 640, 0x000000, 0.18).setAlpha(0);
+
+        this.introGateTitle = this.add.text(180, 230, 'Coco Jones\nLuva Girl', {
+            fontSize: '36px',
+            align: 'center',
+            color: '#ffd6f2',
+            stroke: '#ff69b4',
+            strokeThickness: 5,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 18, fill: true }
+        }).setOrigin(0.5).setAlpha(0).setScale(0.9);
+
+        this.introGateButtonBg = this.add.ellipse(180, 342, 198, 82, 0xff8fcf, 1)
+            .setStrokeStyle(5, 0xff69b4)
+            .setAlpha(0)
+            .setInteractive({ useHandCursor: true });
+
+        this.introGateButtonInner = this.add.ellipse(180, 342, 176, 64, 0xffb7e3, 1)
+            .setStrokeStyle(3, 0xd94f9d)
+            .setAlpha(0);
+
+        this.introGateButton = this.add.text(180, 342, 'TAP HERE!', {
+            fontSize: '24px',
+            color: '#ffffff',
+            stroke: '#ff69b4',
+            strokeThickness: 2,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 12, fill: true }
+        }).setOrigin(0.5).setAlpha(0);
+
+        this.introGateSub = this.add.text(180, 404, 'to play!!', {
+            fontSize: '18px',
+            color: '#ffff66',
+            stroke: '#ff69b4',
+            strokeThickness: 3,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 12, fill: true }
+        }).setOrigin(0.5).setAlpha(0);
+
+        this.introGateElements.push(
+            this.introGateOverlay,
+            this.introGateTitle,
+            this.introGateButtonBg,
+            this.introGateButtonInner,
+            this.introGateButton,
+            this.introGateSub
+        );
+
+        this.introGateButtonBg.on('pointerdown', () => {
+            this.pressIntroGateButton();
+        });
+
+        this.introGateButtonBg.on('pointerover', () => {
+            if (this.isUnlockingIntroGate) return;
+            this.introGateButtonBg.setFillStyle(0xff9fd8, 1);
+            this.introGateButtonInner.setFillStyle(0xffc7ea, 1);
+            this.introGateButton.setScale(1.03);
+        });
+
+        this.introGateButtonBg.on('pointerout', () => {
+            if (this.isUnlockingIntroGate) return;
+            this.introGateButtonBg.setFillStyle(0xff8fcf, 1);
+            this.introGateButtonInner.setFillStyle(0xffb7e3, 1);
+            this.introGateButtonBg.setScale(1);
+            this.introGateButtonInner.setScale(1);
+            this.introGateButton.setScale(1);
+        });
+
+        this.introGatePulseTween = this.tweens.add({
+            targets: [this.introGateButtonBg, this.introGateButtonInner, this.introGateButton],
+            scale: { from: 1, to: 1.04 },
+            duration: 650,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut',
+            paused: true
+        });
+    }
+
+    showIntroGate() {
+        this.cameras.main.fadeIn(320, 0, 0, 0);
+
+        this.tweens.add({
+            targets: [
+                this.introGateOverlay,
+                this.introGateButtonBg,
+                this.introGateButtonInner,
+                this.introGateButton,
+                this.introGateSub
+            ],
+            alpha: 1,
+            duration: 360,
+            ease: 'Power2'
+        });
+
+        this.tweens.add({
+            targets: this.introGateTitle,
+            alpha: 1,
+            scale: 1,
+            duration: 460,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                if (this.introGatePulseTween) {
+                    this.introGatePulseTween.resume();
+                }
+            }
+        });
+    }
+
+    pressIntroGateButton() {
+        if (!this.introGateActive || this.isGameOver || this.isUnlockingIntroGate) return;
+
+        this.isUnlockingIntroGate = true;
+        this.tryStartHomeMusic();
+
+        if (this.introGatePulseTween) {
+            this.introGatePulseTween.stop();
+            this.introGatePulseTween = null;
+        }
+
+        this.introGateButtonBg.setFillStyle(0xe25aa8, 1);
+        this.introGateButtonInner.setFillStyle(0xf07fc0, 1);
+
+        this.tweens.add({
+            targets: [this.introGateButtonBg, this.introGateButtonInner, this.introGateButton],
+            scale: 0.93,
+            duration: 90,
+            ease: 'Power2',
+            onComplete: () => {
+                this.time.delayedCall(220, () => {
+                    this.unlockIntroGate();
+                });
+            }
+        });
+    }
+
+    unlockIntroGate() {
+        if (!this.introGateActive || this.isGameOver) return;
+
+        this.tryStartHomeMusic();
+        this.introGateActive = false;
+
+        this.tweens.add({
+            targets: this.introGateElements,
+            alpha: 0,
+            duration: 260,
+            ease: 'Power2',
+            onComplete: () => {
+                this.destroyIntroGate();
+                this.enterHomeScreen();
+            }
+        });
+    }
+
+    destroyIntroGate() {
+        if (!this.introGateElements) return;
+
+        this.introGateElements.forEach((el) => {
+            if (el && el.active) el.destroy();
+        });
+
+        this.introGateElements = [];
+        this.introGateOverlay = null;
+        this.introGateTitle = null;
+        this.introGateButtonBg = null;
+        this.introGateButtonInner = null;
+        this.introGateButton = null;
+        this.introGateSub = null;
+        this.isUnlockingIntroGate = false;
+    }
+
+    enterHomeScreen() {
+        this.homeScreenActive = true;
         this.playHomeScreenIntro();
     }
 
@@ -263,7 +448,6 @@ export class Start extends Phaser.Scene {
     }
 
     playHomeScreenIntro() {
-        this.cameras.main.fadeIn(320, 0, 0, 0);
         this.ship.setAlpha(0);
 
         this.tweens.add({
@@ -363,7 +547,7 @@ export class Start extends Phaser.Scene {
     }
 
     setHomeMoveVisualActive() {
-        if (this.gameStarted || this.isGameOver || this.gameCountdownActive) return;
+        if (this.gameStarted || this.isGameOver || this.gameCountdownActive || this.introGateActive) return;
 
         this.homePointerMoving = true;
 
@@ -389,7 +573,7 @@ export class Start extends Phaser.Scene {
     }
 
     scheduleHomeIdleRestore() {
-        if (this.gameStarted || this.isGameOver || this.gameCountdownActive) return;
+        if (this.gameStarted || this.isGameOver || this.gameCountdownActive || this.introGateActive) return;
 
         if (this.homeMoveVisualTimer) {
             this.homeMoveVisualTimer.remove(false);
@@ -405,7 +589,7 @@ export class Start extends Phaser.Scene {
     }
 
     restoreHomeIdleIfNeeded() {
-        if (this.gameStarted || this.isGameOver || this.gameCountdownActive) return;
+        if (this.gameStarted || this.isGameOver || this.gameCountdownActive || this.introGateActive) return;
         if (this.homePointerMoving) return;
         if (this.reactionTimer) return;
 
@@ -478,7 +662,7 @@ export class Start extends Phaser.Scene {
     }
 
     startGame() {
-        if (this.gameStarted || this.gameCountdownActive || this.isGameOver) return;
+        if (this.gameStarted || this.gameCountdownActive || this.isGameOver || this.introGateActive) return;
 
         this.gameCountdownActive = true;
         this.activeMusicMode = 'game';
@@ -704,21 +888,23 @@ export class Start extends Phaser.Scene {
 
         let movedThisFrame = false;
 
-        if (this.cursors.left.isDown) {
-            this.ship.x -= 5;
-            movedThisFrame = true;
-        }
+        if (!this.introGateActive) {
+            if (this.cursors.left.isDown) {
+                this.ship.x -= 5;
+                movedThisFrame = true;
+            }
 
-        if (this.cursors.right.isDown) {
-            this.ship.x += 5;
-            movedThisFrame = true;
-        }
+            if (this.cursors.right.isDown) {
+                this.ship.x += 5;
+                movedThisFrame = true;
+            }
 
-        if (this.ship.x < 30) this.ship.x = 30;
-        if (this.ship.x > 330) this.ship.x = 330;
+            if (this.ship.x < 30) this.ship.x = 30;
+            if (this.ship.x > 330) this.ship.x = 330;
+        }
 
         if (!this.gameStarted) {
-            if (!this.gameCountdownActive) {
+            if (!this.gameCountdownActive && !this.introGateActive) {
                 if (movedThisFrame) {
                     this.setHomeMoveVisualActive();
                 } else {
@@ -1251,6 +1437,7 @@ export class Start extends Phaser.Scene {
         this.isGameOver = true;
         this.gameStarted = false;
         this.gameCountdownActive = false;
+        this.introGateActive = false;
         this.activeMusicMode = 'none';
 
         if (this.spawnTimer) this.spawnTimer.remove(false);
@@ -1269,6 +1456,11 @@ export class Start extends Phaser.Scene {
         if (this.gameOverBlinkTimer) {
             this.gameOverBlinkTimer.remove(false);
             this.gameOverBlinkTimer = null;
+        }
+
+        if (this.introGatePulseTween) {
+            this.introGatePulseTween.stop();
+            this.introGatePulseTween = null;
         }
 
         this.items.children.iterate((item) => {
