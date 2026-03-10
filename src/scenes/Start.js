@@ -4,8 +4,8 @@ export class Start extends Phaser.Scene {
     }
 
     preload() {
-        this.load.image('backgroundgames1', 'assets/BG1.PNG');
-        this.load.image('backgroundgames2', 'assets/BG2.PNG');
+        this.load.image('backgroundgames1', 'assets/BG1.png');
+        this.load.image('backgroundgames2', 'assets/BG2.png');
         this.load.image('backgroundgames3', 'assets/BG3.PNG');
         this.load.image('backgroundgames4', 'assets/BG4.PNG');
 
