@@ -2000,137 +2000,55 @@ export class Start extends Phaser.Scene {
     }
 
     showLuvBombMessage() {
-        if (this.luvBombMessageTween) {
-            this.luvBombMessageTween.stop();
+    if (this.luvBombMessageTween) {
+        this.luvBombMessageTween.stop();
+        this.luvBombMessageTween = null;
+    }
+
+    if (this.luvBombMessageText && this.luvBombMessageText.active) {
+        this.luvBombMessageText.destroy();
+    }
+
+    this.luvBombMessageText = this.add.text(180, 220, 'LUV BOMB\nATTACK!!!', {
+        fontSize: '24px',
+        fontStyle: 'bold',
+        color: '#ff8fd8',
+        stroke: '#6d3bb8',
+        strokeThickness: 8,
+        shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 2, fill: true },
+        align: 'center'
+    }).setOrigin(0.5).setDepth(2600).setScale(0.9);
+
+    this.tweens.add({
+        targets: this.luvBombMessageText,
+        scale: 1.04,
+        duration: 110,
+        yoyo: true,
+        repeat: 4,
+        ease: 'Back.Out'
+    });
+
+    this.startLuvBombTextSparkles();
+
+    this.luvBombMessageTween = this.tweens.add({
+        targets: this.luvBombMessageText,
+        alpha: 0,
+        duration: this.luvBombDuration,
+        ease: 'Linear',
+        onComplete: () => {
+            this.stopLuvBombTextSparkles();
+
+            if (this.luvBombMessageText && this.luvBombMessageText.active) {
+                this.luvBombMessageText.destroy();
+            }
+
+            this.luvBombMessageText = null;
             this.luvBombMessageTween = null;
+            this.announcementActive = false;
+            this.playNextAnnouncement();
         }
-
-        if (this.luvBombMessageText && this.luvBombMessageText.active) {
-            this.luvBombMessageText.destroy();
-        }
-
-        this.luvBombMessageText = this.add.text(180, 220, 'LUV BOMB\nATTACK!!!', {
-            fontSize: '30px',
-            fontStyle: 'bold',
-            color: '#ff7ecf',
-            stroke: '#6d3bb8',
-            strokeThickness: 6,
-            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 3, fill: true }
-        }).setOrigin(0.5).setDepth(2600).setScale(0.9);
-
-        this.tweens.add({
-            targets: this.luvBombMessageText,
-            scale: 1.04,
-            duration: 110,
-            yoyo: true,
-            repeat: 4,
-            ease: 'Back.Out'
-        });
-
-        this.startLuvBombTextSparkles();
-
-        this.luvBombMessageTween = this.tweens.add({
-            targets: this.luvBombMessageText,
-            alpha: 0,
-            duration: this.luvBombDuration,
-            ease: 'Linear',
-            onComplete: () => {
-                this.stopLuvBombTextSparkles();
-
-                if (this.luvBombMessageText && this.luvBombMessageText.active) {
-                    this.luvBombMessageText.destroy();
-                }
-
-                this.luvBombMessageText = null;
-                this.luvBombMessageTween = null;
-                this.announcementActive = false;
-                this.playNextAnnouncement();
-            }
-        });
-    }
-
-    startLuvBombTextSparkles() {
-        this.stopLuvBombTextSparkles();
-
-        this.luvBombSparkleTimer = this.time.addEvent({
-            delay: 170,
-            loop: true,
-            callback: () => {
-                if (!this.luvBombMessageText || !this.luvBombMessageText.active || !this.luvBombActive) return;
-
-                const sparkle = this.add.text(
-                    180 + Phaser.Math.Between(-115, 115),
-                    220 + Phaser.Math.Between(-26, 26),
-                    Phaser.Math.Between(0, 1) === 0 ? '✨' : '💖',
-                    { fontSize: `${Phaser.Math.Between(14, 20)}px` }
-                ).setOrigin(0.5).setDepth(2601);
-
-                this.tweens.add({
-                    targets: sparkle,
-                    y: sparkle.y - Phaser.Math.Between(10, 26),
-                    x: sparkle.x + Phaser.Math.Between(-10, 10),
-                    alpha: 0,
-                    duration: 520,
-                    onComplete: () => sparkle.destroy()
-                });
-            }
-        });
-    }
-
-    stopLuvBombTextSparkles() {
-        if (this.luvBombSparkleTimer) {
-            this.luvBombSparkleTimer.remove(false);
-            this.luvBombSparkleTimer = null;
-        }
-    }
-
-    showTopLifeMessage(title, subtext) {
-        const titleText = this.add.text(180, 180, title, {
-            fontSize: '24px',
-            fontStyle: 'bold',
-            color: '#ff8fd8',
-            stroke: '#6d3bb8',
-            strokeThickness: 8,
-            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 2, fill: true }
-        }).setOrigin(0.5).setDepth(2600);
-
-        const subText = this.add.text(180, 210, subtext, {
-            fontSize: '14px',
-            align: 'center',
-            color: '#ffffff',
-            fontStyle: 'bold',
-            stroke: '#4b1e6d',
-            strokeThickness: 3
-        }).setOrigin(0.5).setDepth(2600);
-
-        this.activeLevelMessage = titleText;
-        this.activeLevelSubMessage = subText;
-        this.activeCenterMessage = titleText;
-
-        this.tweens.add({
-            targets: [titleText, subText],
-            alpha: 0,
-            delay: 3200,
-            duration: 700,
-            onComplete: () => {
-                if (this.activeCenterMessage === titleText) {
-                    this.activeCenterMessage = null;
-                }
-                if (this.activeLevelMessage === titleText) {
-                    this.activeLevelMessage = null;
-                }
-                if (this.activeLevelSubMessage === subText) {
-                    this.activeLevelSubMessage = null;
-                }
-
-                titleText.destroy();
-                subText.destroy();
-
-                this.announcementActive = false;
-                this.playNextAnnouncement();
-            }
-        });
-    }
+    });
+}
 
     showLevelMessage(text, shouldPulse = false, isFlowState = false) {
         const levelText = this.add.text(180, 200, text, {
