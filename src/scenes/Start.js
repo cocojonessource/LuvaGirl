@@ -6,25 +6,25 @@ export class Start extends Phaser.Scene {
     preload() {
         this.load.image('backgroundgames1', 'assets/BG1.png');
         this.load.image('backgroundgames2', 'assets/BG2.png');
-        this.load.image('backgroundgames3', 'assets/BG3.PNG');
-        this.load.image('backgroundgames4', 'assets/BG4.PNG');
+        this.load.image('backgroundgames3', 'assets/BG3.png');
+        this.load.image('backgroundgames4', 'assets/BG4.png');
 
         this.load.image('openover', 'assets/Tomatoend1.PNG');
         this.load.image('closeover', 'assets/Tomatoend2.PNG');
 
         this.load.image('LuvaGirl', 'assets/LuvaGirl.png');
-        this.load.image('Luvagirldrag', 'assets/Luvagirldrag.PNG');
-        this.load.image('LuvaGirlBad', 'assets/LuvaGirlbad.PNG');
-        this.load.image('LuvaGirlBonus', 'assets/LuvaGirlbonus.PNG');
+        this.load.image('Luvagirldrag', 'assets/Luvagirldrag.png');
+        this.load.image('LuvaGirlBad', 'assets/LuvaGirlbad.png');
+        this.load.image('LuvaGirlBonus', 'assets/LuvaGirlbonus.png');
 
-        this.load.image('Onelife', 'assets/Onelife.PNG');
-        this.load.image('OnelifeBad', 'assets/Onelifebad.PNG');
-        this.load.image('OnelifeBonus', 'assets/Onelifebonus.PNG');
+        this.load.image('Onelife', 'assets/Onelife.png');
+        this.load.image('OnelifeBad', 'assets/Onelifebad.png');
+        this.load.image('OnelifeBonus', 'assets/Onelifebonus.png');
 
-        this.load.image('heartBlue', 'assets/blue.PNG');
-        this.load.image('heartGreen', 'assets/green.PNG');
-        this.load.image('heartPink', 'assets/pink.PNG');
-        this.load.image('heartYellow', 'assets/yellow.PNG');
+        this.load.image('heartBlue', 'assets/blue.png');
+        this.load.image('heartGreen', 'assets/green.png');
+        this.load.image('heartPink', 'assets/pink.png');
+        this.load.image('heartYellow', 'assets/yellow.png');
 
         this.load.image('lifeFull', 'assets/lifescore.png');
         this.load.image('lifeLost', 'assets/lostscore.png');
@@ -86,13 +86,11 @@ export class Start extends Phaser.Scene {
         this.grammyUnlocked = false;
         this.grammySpawned = false;
         this.grammyCaught = false;
-        this.grammyForcedSpawnPending = false;
+        this.grammyEventStarted = false;
 
-        this.laysUnlocked = false;
-        this.laysForcedSpawnPending = false;
-        this.laysRegularSpawnConsumed = false;
-        this.firstLaysCinematicDone = false;
-        this.nextChaosLaysAt = 1100;
+        this.laysThresholds = [45, 250, 400, 650, 1200];
+        this.laysSpawnedAt = {};
+        this.laysEventActive = false;
 
         this.musicSpawnCount = 0;
         this.ramenSpawnCount = 0;
@@ -131,17 +129,44 @@ export class Start extends Phaser.Scene {
 
         this.luvBombActive = false;
         this.luvBombTimer = null;
-        this.luvBombShownAt = { 150: false, 500: false };
+        this.luvBombShownAt = { 150: false, 600: false };
         this.luvBombDuration = 10000;
         this.luvBombRainbowTimer = null;
         this.luvBombMessageText = null;
         this.luvBombMessageTween = null;
-
-        this.specialEventCooldownUntil = 0;
+        this.luvBombSparkleTimer = null;
 
         this.activeCenterMessage = null;
         this.activeLevelMessage = null;
-        this.pendingLevelMessage = null;
+        this.activeLevelSubMessage = null;
+        this.pendingAnnouncements = [];
+        this.announcementActive = false;
+
+        this.lastLaysTime = 0;
+        this.lastLuvBombScore = 0;
+        this.bonusDelayUntil = 0;
+
+        this.flowEdgeRects = [];
+        this.flowEdgeTween = null;
+        this.flowEdgeColorTimer = null;
+        this.flowEdgeColors = [
+            0xff8cf5,
+            0xffc36b,
+            0xfff77c,
+            0x9dff8c,
+            0x7df9ff,
+            0x9d8cff
+        ];
+
+        this.chaosEdgeRects = [];
+        this.chaosEdgeTween = null;
+        this.chaosEdgeColorTimer = null;
+        this.chaosEdgeColors = [
+            0xff2a2a,
+            0xff6a00,
+            0xffb300,
+            0x8a0000
+        ];
 
         this.rainbowCycleColors = [
             0xff4d6d,
@@ -203,7 +228,8 @@ export class Start extends Phaser.Scene {
     }
 
     getBaseShipTexture() {
-        return this.luvBombActive ? 'Luvagirldrag' : (this.lives <= 1 ? 'Onelife' : 'LuvaGirl');
+        if (this.luvBombActive) return 'Luvagirldrag';
+        return this.lives <= 1 ? 'Onelife' : 'LuvaGirl';
     }
 
     getBadShipTexture() {
@@ -218,7 +244,7 @@ export class Start extends Phaser.Scene {
         if (!this.ship || !this.ship.active) return;
 
         this.ship.setTexture(this.getBaseShipTexture());
-        this.ship.setScale(0.22);
+        this.ship.setScale(this.luvBombActive ? 0.23 : 0.22);
         this.ship.angle = 0;
         this.ship.y = this.shipBaseY;
 
@@ -888,7 +914,7 @@ export class Start extends Phaser.Scene {
         this.setupHUD();
         this.tryStartGameplayMusic();
 
-        this.spawnWave(this.getWaveSpawnCount());
+        this.spawnWave(this.baseWaveSize);
 
         this.spawnTimer = this.time.addEvent({
             delay: 180,
@@ -918,7 +944,7 @@ export class Start extends Phaser.Scene {
         if (now - this.lastWaveSpawnAt < neededDelay) return;
 
         this.lastWaveSpawnAt = now;
-        this.spawnWave(this.getWaveSpawnCount());
+        this.spawnWave(this.baseWaveSize);
     }
 
     maybeRunRefillWave() {
@@ -937,7 +963,7 @@ export class Start extends Phaser.Scene {
         this.lastRefillSpawnAt = now;
 
         const deficit = targetActive - currentActive;
-        const refillCount = Phaser.Math.Clamp(deficit, 1, this.getWaveSpawnCount());
+        const refillCount = Phaser.Math.Clamp(deficit, 1, this.baseWaveSize + (this.luvBombActive ? 2 : 1));
 
         this.spawnWave(refillCount);
     }
@@ -953,63 +979,49 @@ export class Start extends Phaser.Scene {
         return total;
     }
 
-    getWaveSpawnCount() {
-        return this.chaosModeActive ? 3 : 2;
-    }
-
     getWaveDelayByHearts() {
-        let delay = 520;
+        let delay;
 
-        if (this.heartsCaught < 5) delay = 1150;
-        else if (this.heartsCaught < 20) delay = 900;
-        else if (this.heartsCaught < 60) delay = 700;
-        else if (this.heartsCaught < 100) delay = 620;
-        else if (this.heartsCaught < 200) delay = 560;
-        else delay = 520;
+        if (this.heartsCaught < 5) delay = 1100;
+        else if (this.heartsCaught < 20) delay = 850;
+        else if (this.heartsCaught < 60) delay = 640;
+        else if (this.heartsCaught < 100) delay = 560;
+        else if (this.heartsCaught < 200) delay = 500;
+        else delay = 450;
 
-        if (this.luvBombActive) delay -= 220;
-        if (this.chaosModeActive) delay -= 60;
+        if (this.luvBombActive) delay -= 420;
 
-        return Phaser.Math.Clamp(delay, 220, 1400);
+        return Phaser.Math.Clamp(delay, 140, 1500);
     }
 
     getRefillDelayByHearts() {
-        let delay = 580;
+        let delay;
 
-        if (this.heartsCaught < 5) delay = 1400;
-        else if (this.heartsCaught < 20) delay = 1100;
-        else if (this.heartsCaught < 60) delay = 850;
-        else if (this.heartsCaught < 100) delay = 700;
-        else if (this.heartsCaught < 200) delay = 620;
-        else delay = 580;
+        if (this.heartsCaught < 5) delay = 1300;
+        else if (this.heartsCaught < 20) delay = 980;
+        else if (this.heartsCaught < 60) delay = 760;
+        else if (this.heartsCaught < 100) delay = 620;
+        else if (this.heartsCaught < 200) delay = 540;
+        else delay = 500;
 
-        if (this.luvBombActive) delay -= 180;
-        if (this.chaosModeActive) delay -= 50;
+        if (this.luvBombActive) delay -= 430;
 
-        return Phaser.Math.Clamp(delay, 220, 1600);
+        return Phaser.Math.Clamp(delay, 140, 1600);
     }
 
     getTargetActiveItemsByHearts() {
-        let total = 5;
+        let total;
 
-        if (this.heartsCaught < 5) total = 1;
-        else if (this.heartsCaught < 20) total = 2;
-        else if (this.heartsCaught < 60) total = 3;
-        else if (this.heartsCaught < 200) total = 4;
-        else total = 5;
+        if (this.heartsCaught < 5) total = 2;
+        else if (this.heartsCaught < 20) total = 3;
+        else if (this.heartsCaught < 60) total = 4;
+        else if (this.heartsCaught < 100) total = 5;
+        else if (this.heartsCaught < 200) total = 6;
+        else total = 7;
 
-        if (this.luvBombActive) total += 3;
-        if (this.chaosModeActive) total += 1;
+        if (this.luvBombActive) total += 6;
 
-        return Phaser.Math.Clamp(total, 1, 8);
-    }
-
-    isSpecialEventBlocked() {
-        return this.luvBombActive || this.time.now < this.specialEventCooldownUntil;
-    }
-
-    canShowLevelMessage() {
-        return !this.luvBombActive && !this.activeCenterMessage && !this.activeLevelMessage;
+        return Phaser.Math.Clamp(total, 1, 12);
     }
 
     pauseSpawnTimers() {
@@ -1022,87 +1034,45 @@ export class Start extends Phaser.Scene {
         if (this.extraSpawnTimer) this.extraSpawnTimer.paused = false;
     }
 
-    queueOrShowLevelMessage(text) {
-        if (this.canShowLevelMessage()) {
-            this.showLevelMessage(text);
-        } else {
-            this.pendingLevelMessage = text;
+    playNextAnnouncement() {
+        if (this.announcementActive) return;
+        if (!this.pendingAnnouncements.length) return;
+
+        const next = this.pendingAnnouncements.shift();
+        this.announcementActive = true;
+
+        if (next.type === 'level') {
+            this.showLevelMessage(next.text, next.shouldPulse, next.isFlowState);
+        } else if (next.type === 'boost') {
+            this.showTopLifeMessage(next.title, next.subtext);
+        } else if (next.type === 'luvBomb') {
+            this.showLuvBombMessage();
         }
     }
 
-    clearAllFallingItems() {
-        this.items.children.iterate((item) => {
-            if (!item || !item.active) return;
+    queueOrShowLevelMessage(text, shouldPulse = false, isFlowState = false) {
+        this.pendingAnnouncements = this.pendingAnnouncements.filter((item) => item.type !== 'level');
 
-            if (item.glowSprite && item.glowSprite.active) {
-                item.glowSprite.destroy();
-            }
-
-            item.destroy();
+        this.pendingAnnouncements.push({
+            type: 'level',
+            text,
+            shouldPulse,
+            isFlowState
         });
+
+        this.playNextAnnouncement();
     }
 
-    burstRemainingHeartsIntoSparkles() {
-        this.items.children.iterate((item) => {
-            if (!item || !item.active) return;
-            if (item.itemType !== 'heart') return;
-
-            for (let i = 0; i < 4; i++) {
-                const sparkle = this.add.text(
-                    item.x + Phaser.Math.Between(-12, 12),
-                    item.y + Phaser.Math.Between(-12, 12),
-                    '✨',
-                    { fontSize: '16px' }
-                ).setOrigin(0.5).setDepth(2600);
-
-                this.tweens.add({
-                    targets: sparkle,
-                    x: sparkle.x + Phaser.Math.Between(-18, 18),
-                    y: sparkle.y + Phaser.Math.Between(-18, 18),
-                    alpha: 0,
-                    scale: 1.2,
-                    duration: 350,
-                    onComplete: () => sparkle.destroy()
-                });
-            }
-        });
-    }
-
-    startLuvBombRainbowEffect() {
-        if (this.luvBombRainbowTimer) {
-            this.luvBombRainbowTimer.remove(false);
-            this.luvBombRainbowTimer = null;
-        }
-
-        if (!this.ship || !this.ship.active) return;
-
-        let colorIndex = 0;
-
-        this.luvBombRainbowTimer = this.time.addEvent({
-            delay: 90,
-            loop: true,
-            callback: () => {
-                if (!this.ship || !this.ship.active || !this.luvBombActive) return;
-                this.ship.setTint(this.rainbowCycleColors[colorIndex]);
-                colorIndex = (colorIndex + 1) % this.rainbowCycleColors.length;
-            }
-        });
-    }
-
-    stopLuvBombRainbowEffect() {
-        if (this.luvBombRainbowTimer) {
-            this.luvBombRainbowTimer.remove(false);
-            this.luvBombRainbowTimer = null;
-        }
-
-        if (this.ship && this.ship.active) {
-            this.ship.clearTint();
-        }
+    queueLuvBombMessage() {
+        this.pendingAnnouncements.push({ type: 'luvBomb' });
+        this.playNextAnnouncement();
     }
 
     triggerGrammyEvent() {
-        if (this.isGameOver || this.grammySpawned || this.grammyCaught || this.isSpecialEventBlocked()) return;
+        if (this.isGameOver || this.grammyEventStarted || this.grammyCaught || this.luvBombActive || this.laysEventActive) return;
 
+        this.grammyEventStarted = true;
+        this.bonusDelayUntil = this.time.now + 10000;
         this.pauseSpawnTimers();
 
         const dim = this.add.rectangle(180, 320, 360, 640, 0x000000, 0.35).setDepth(2200);
@@ -1129,7 +1099,6 @@ export class Start extends Phaser.Scene {
         grammy.pulseAmount = 0.03;
         grammy.pulseTime = 0;
         grammy.safePassed = false;
-        grammy.laneIndex = 3;
 
         this.grammySpawned = true;
 
@@ -1169,10 +1138,14 @@ export class Start extends Phaser.Scene {
         });
     }
 
-    triggerSpecialDescendEvent(type) {
-        if (this.isGameOver || this.isSpecialEventBlocked()) return;
-        if (type !== 'lays') return;
+    triggerLaysEvent(threshold) {
+        if (this.time.now < this.bonusDelayUntil) return;
+        if (this.lastLaysTime && this.time.now < this.lastLaysTime + 120000) return;
+        if (this.isGameOver || this.laysEventActive || this.luvBombActive) return;
 
+        this.laysEventActive = true;
+        this.laysSpawnedAt[threshold] = true;
+        this.lastLaysTime = this.time.now;
         this.pauseSpawnTimers();
 
         const dim = this.add.rectangle(180, 320, 360, 640, 0x000000, 0.33).setAlpha(0.95).setDepth(2200);
@@ -1185,23 +1158,21 @@ export class Start extends Phaser.Scene {
             }
         });
 
-        const item = this.add.image(180, -60, 'laysItem').setScale(0.22).setDepth(2300);
+        const item = this.add.image(180, -60, 'laysItem').setScale(0.70).setDepth(2300);
         item.itemKind = 'life';
         item.itemValue = 1;
         item.itemType = 'lays';
         item.speed = Math.max(2, this.currentFallSpeed * 0.55);
-        item.catchWidth = 38;
-        item.catchHeight = 36;
-        item.angleSpeed = 0.18;
-        item.baseScale = 0.22;
+        item.catchWidth = 42;
+        item.catchHeight = 42;
+        item.angleSpeed = 0.25;
+        item.baseScale = 0.70;
         item.pulseSpeed = 0.12;
-        item.pulseAmount = 0.02;
+        item.pulseAmount = 0.015;
         item.pulseTime = 0;
         item.safePassed = false;
-        item.laneIndex = 3;
 
         this.addSoftLifeGlow(item);
-        this.firstLaysCinematicDone = true;
         this.items.add(item);
 
         for (let i = 0; i < 10; i++) {
@@ -1287,8 +1258,8 @@ export class Start extends Phaser.Scene {
     }
 
     getLifeIconPosition(index) {
-        const startX = 288;
-        const startY = 18;
+        const startX = 290;
+        const startY = 20;
         const colSpacing = 18;
         const rowSpacing = 18;
         const maxCols = 4;
@@ -1304,10 +1275,12 @@ export class Start extends Phaser.Scene {
 
     createLifeIcons() {
         this.lifeIcons = [];
+        const totalSlots = Math.max(3, this.lives);
 
-        for (let i = 0; i < this.lives; i++) {
+        for (let i = 0; i < totalSlots; i++) {
             const pos = this.getLifeIconPosition(i);
-            const icon = this.add.image(pos.x, pos.y, 'lifeFull')
+            const texture = i < this.lives ? 'lifeFull' : 'lifeLost';
+            const icon = this.add.image(pos.x, pos.y, texture)
                 .setScale(0.18)
                 .setOrigin(0.5, 0.5);
 
@@ -1316,7 +1289,9 @@ export class Start extends Phaser.Scene {
     }
 
     updateLivesDisplay() {
-        while (this.lifeIcons.length < this.lives) {
+        const totalSlots = Math.max(3, this.lives);
+
+        while (this.lifeIcons.length < totalSlots) {
             const pos = this.getLifeIconPosition(this.lifeIcons.length);
             const icon = this.add.image(pos.x, pos.y, 'lifeFull')
                 .setScale(0.08)
@@ -1332,7 +1307,7 @@ export class Start extends Phaser.Scene {
             });
         }
 
-        while (this.lifeIcons.length > this.lives) {
+        while (this.lifeIcons.length > totalSlots) {
             const icon = this.lifeIcons.pop();
 
             this.tweens.add({
@@ -1347,13 +1322,13 @@ export class Start extends Phaser.Scene {
             });
         }
 
-        this.lifeIcons.forEach((icon, index) => {
-            const pos = this.getLifeIconPosition(index);
-            icon.setPosition(pos.x, pos.y);
-            icon.setTexture('lifeFull');
-            icon.setScale(0.18);
-            icon.setAlpha(1);
-        });
+        for (let i = 0; i < this.lifeIcons.length; i++) {
+            const pos = this.getLifeIconPosition(i);
+            this.lifeIcons[i].setPosition(pos.x, pos.y);
+            this.lifeIcons[i].setTexture(i < this.lives ? 'lifeFull' : 'lifeLost');
+            this.lifeIcons[i].setScale(0.18);
+            this.lifeIcons[i].setAlpha(1);
+        }
 
         if (!this.reactionTimer && this.ship && this.ship.active && !this.isGameOver) {
             this.applyCurrentBaseShipTexture();
@@ -1396,7 +1371,9 @@ export class Start extends Phaser.Scene {
 
             item.y += item.speed;
 
-            if (item.angleSpeed) item.angle += item.angleSpeed;
+            if (item.angleSpeed) {
+                item.angle += item.angleSpeed;
+            }
 
             if (item.pulseSpeed) {
                 item.pulseTime += item.pulseSpeed;
@@ -1416,14 +1393,10 @@ export class Start extends Phaser.Scene {
             }
 
             if (item.y > this.gameHeight + 70) {
-                if (item.itemType === 'grammy') {
-                    this.grammySpawned = true;
-                }
+                if (item.itemType === 'grammy') this.grammySpawned = true;
+                if (item.itemType === 'lays') this.laysEventActive = false;
 
-                if (item.glowSprite && item.glowSprite.active) {
-                    item.glowSprite.destroy();
-                }
-
+                if (item.glowSprite && item.glowSprite.active) item.glowSprite.destroy();
                 item.destroy();
                 return;
             }
@@ -1444,59 +1417,9 @@ export class Start extends Phaser.Scene {
     }
 
     getSafeLaneIndexes() {
-        const safeLaneSet = new Set();
-        const randomSafeLane = Phaser.Math.Between(0, this.spawnLanes.length - 1);
-        safeLaneSet.add(randomSafeLane);
-        return Array.from(safeLaneSet);
-    }
-
-    getAvailableAlternateLane(excludedLaneIndexes = [], itemY = 0) {
-        const options = this.spawnLanes
-            .map((_, index) => index)
-            .filter((index) => !excludedLaneIndexes.includes(index))
-            .filter((index) => {
-                let blocked = false;
-
-                this.items.children.iterate((item) => {
-                    if (!item || !item.active) return;
-                    if (item.laneIndex !== index) return;
-                    if (Math.abs(item.y - itemY) < 90) blocked = true;
-                });
-
-                return !blocked;
-            });
-
-        if (options.length > 0) {
-            return Phaser.Utils.Array.GetRandom(options);
-        }
-
-        const relaxed = this.spawnLanes
-            .map((_, index) => index)
-            .filter((index) => !excludedLaneIndexes.includes(index));
-
-        if (relaxed.length > 0) {
-            return Phaser.Utils.Array.GetRandom(relaxed);
-        }
-
-        return null;
-    }
-
-    clearDangerFromSafeLanes(safeLaneIndexes = []) {
-        const dangerTop = this.catchZoneY - 140;
-        const dangerBottom = this.catchZoneBottom + 40;
-
-        this.items.children.iterate((item) => {
-            if (!item || !item.active) return;
-            if (typeof item.laneIndex !== 'number') return;
-            if (!safeLaneIndexes.includes(item.laneIndex)) return;
-            if (item.y < dangerTop || item.y > dangerBottom) return;
-
-            const newLane = this.getAvailableAlternateLane(safeLaneIndexes, item.y);
-            if (newLane === null) return;
-
-            item.laneIndex = newLane;
-            item.x = this.spawnLanes[newLane];
-        });
+        const laneCount = this.spawnLanes.length;
+        const safeLane = Phaser.Math.Between(0, laneCount - 1);
+        return [safeLane];
     }
 
     getSpawnX(type, usedLaneIndexes = [], blockedLaneIndexes = []) {
@@ -1506,6 +1429,13 @@ export class Start extends Phaser.Scene {
 
         if (type === 'tomato') {
             availableLaneIndexes = availableLaneIndexes.filter((index) => !blockedLaneIndexes.includes(index));
+
+            if (this.lastTomatoLane !== null) {
+                const filteredByDistance = availableLaneIndexes.filter((index) => Math.abs(index - this.lastTomatoLane) >= 2);
+                if (filteredByDistance.length > 0) {
+                    availableLaneIndexes = filteredByDistance;
+                }
+            }
         } else {
             if (this.lastSpawnLane !== null) {
                 const filteredNoRepeat = availableLaneIndexes.filter((index) => index !== this.lastSpawnLane);
@@ -1539,7 +1469,7 @@ export class Start extends Phaser.Scene {
 
         if (type === 'tomato') {
             this.lastTomatoLane = laneIndex;
-        } else if (type !== 'grammy') {
+        } else if (type !== 'grammy' && type !== 'lays') {
             this.lastTomatoLane = null;
         }
 
@@ -1548,14 +1478,9 @@ export class Start extends Phaser.Scene {
 
     getMaxTomatoesPerWave() {
         if (this.luvBombActive) return 0;
-        if (this.chaosModeActive) return 2;
-
-        let max = 2;
-        if (this.heartsCaught < 20) max = 1;
-        else if (this.heartsCaught < 60) max = 1;
-        else max = 2;
-
-        return max;
+        if (this.heartsCaught < 20) return 1;
+        if (this.heartsCaught < 60) return 1;
+        return 2;
     }
 
     spawnWave(count = 2) {
@@ -1565,41 +1490,8 @@ export class Start extends Phaser.Scene {
         const safeLaneIndexes = this.getSafeLaneIndexes();
         const spawnCount = Math.max(1, count);
 
-        this.clearDangerFromSafeLanes(safeLaneIndexes);
-
         const maxTomatoesThisWave = this.getMaxTomatoesPerWave();
         let tomatoCountThisWave = 0;
-
-        if (this.laysForcedSpawnPending && !this.isSpecialEventBlocked()) {
-            if (!this.firstLaysCinematicDone) {
-                this.laysForcedSpawnPending = false;
-                this.laysRegularSpawnConsumed = true;
-                this.triggerSpecialDescendEvent('lays');
-                return;
-            } else {
-                const forcedLays = this.spawnSpecificItem('lays', usedLaneIndexes, safeLaneIndexes);
-                if (forcedLays && typeof forcedLays.laneIndex === 'number') {
-                    usedLaneIndexes.push(forcedLays.laneIndex);
-                    this.laysForcedSpawnPending = false;
-                    if (!this.chaosModeActive) this.laysRegularSpawnConsumed = true;
-                }
-            }
-        }
-
-        if (
-            this.grammyForcedSpawnPending &&
-            this.grammyUnlocked &&
-            !this.grammySpawned &&
-            !this.grammyCaught &&
-            !this.chaosModeActive &&
-            !this.isSpecialEventBlocked()
-        ) {
-            const forcedGrammy = this.spawnSpecificItem('grammy', usedLaneIndexes, safeLaneIndexes);
-            if (forcedGrammy && typeof forcedGrammy.laneIndex === 'number') {
-                usedLaneIndexes.push(forcedGrammy.laneIndex);
-            }
-            this.grammyForcedSpawnPending = false;
-        }
 
         for (let i = usedLaneIndexes.length; i < spawnCount; i++) {
             let type = this.chooseItemType();
@@ -1666,16 +1558,9 @@ export class Start extends Phaser.Scene {
 
     spawnSpecificItem(type, usedLaneIndexes = [], safeLaneIndexes = []) {
         if (this.isGameOver) return null;
+        if (type === 'grammy' || type === 'lays') return null;
 
-        if (type === 'grammy' && (!this.grammyUnlocked || this.grammySpawned || this.grammyCaught || this.chaosModeActive || this.isSpecialEventBlocked())) {
-            return null;
-        }
-
-        if (type === 'lays' && (!this.cache.image.exists('laysItem') || this.isSpecialEventBlocked())) {
-            return null;
-        }
-
-        const blockedLaneIndexes = type === 'tomato' ? [...safeLaneIndexes] : [];
+        const blockedLaneIndexes = type === 'tomato' ? safeLaneIndexes : [];
         const spawnData = this.getSpawnX(type, usedLaneIndexes, blockedLaneIndexes);
         const x = spawnData.x;
 
@@ -1687,13 +1572,12 @@ export class Start extends Phaser.Scene {
             item.itemKind = 'good';
             item.itemValue = this.luvBombActive ? 2 : 1;
             item.itemType = 'heart';
-            item.speed = this.currentFallSpeed;
+            item.speed = this.luvBombActive ? this.currentFallSpeed + 2 : this.currentFallSpeed;
             item.catchWidth = 38;
             item.catchHeight = 34;
             item.angleSpeed = 0.12;
             item.baseScale = 0.24;
             item.safePassed = false;
-            item.laneIndex = spawnData.laneIndex;
         }
 
         if (type === 'tomato') {
@@ -1707,7 +1591,6 @@ export class Start extends Phaser.Scene {
             item.angleSpeed = -0.18;
             item.baseScale = 0.23;
             item.safePassed = false;
-            item.laneIndex = spawnData.laneIndex;
         }
 
         if (type === 'ramen') {
@@ -1721,7 +1604,6 @@ export class Start extends Phaser.Scene {
             item.angleSpeed = 0.18;
             item.baseScale = 0.22;
             item.safePassed = false;
-            item.laneIndex = spawnData.laneIndex;
             this.ramenSpawnCount += 1;
             this.addPurpleGlow(item);
         }
@@ -1737,49 +1619,8 @@ export class Start extends Phaser.Scene {
             item.angleSpeed = 0.18;
             item.baseScale = 0.22;
             item.safePassed = false;
-            item.laneIndex = spawnData.laneIndex;
             this.musicSpawnCount += 1;
             this.addPurpleGlow(item);
-        }
-
-        if (type === 'grammy') {
-            item = this.add.image(x, -38, 'grammy').setScale(0.3);
-            item.itemKind = 'bonus';
-            item.itemValue = 10;
-            item.itemType = 'grammy';
-            item.speed = this.currentFallSpeed;
-            item.catchWidth = 40;
-            item.catchHeight = 40;
-            item.angleSpeed = 0.35;
-            item.baseScale = 0.3;
-            item.pulseSpeed = 0.18;
-            item.pulseAmount = 0.02;
-            item.pulseTime = 0;
-            item.safePassed = false;
-            item.laneIndex = spawnData.laneIndex;
-            this.grammySpawned = true;
-
-            if (item.preFX) {
-                item.preFX.addGlow(0x8fdcff, 10, 0, false, 0.15, 16);
-            }
-        }
-
-        if (type === 'lays') {
-            item = this.add.image(x, -34, 'laysItem').setScale(0.22);
-            item.itemKind = 'life';
-            item.itemValue = 1;
-            item.itemType = 'lays';
-            item.speed = this.currentFallSpeed;
-            item.catchWidth = 38;
-            item.catchHeight = 36;
-            item.angleSpeed = 0.18;
-            item.baseScale = 0.22;
-            item.pulseSpeed = 0.12;
-            item.pulseAmount = 0.02;
-            item.pulseTime = 0;
-            item.safePassed = false;
-            item.laneIndex = spawnData.laneIndex;
-            this.addSoftLifeGlow(item);
         }
 
         if (!item) return null;
@@ -1795,48 +1636,46 @@ export class Start extends Phaser.Scene {
 
     getSpawnWeights() {
         if (this.luvBombActive) {
-            return { heart: 100, tomato: 0, ramen: 0, music: 0, grammy: 0 };
+            return { heart: 100, tomato: 0, ramen: 0, music: 0 };
         }
 
-        if (this.chaosModeActive) {
-            return { heart: 54, tomato: 46, ramen: 0, music: 0, grammy: 0 };
+        if (this.flowStateActive || this.chaosModeActive) {
+            if (this.heartsCaught < 950) {
+                return { heart: 46, tomato: 54, ramen: 0, music: 0 };
+            }
+            return { heart: 42, tomato: 58, ramen: 0, music: 0 };
         }
 
         if (this.heartsCaught < 5) {
-            return { heart: 100, tomato: 0, ramen: 0, music: 0, grammy: 0 };
+            return { heart: 100, tomato: 0, ramen: 0, music: 0 };
         }
 
         if (this.heartsCaught < 15) {
-            return { heart: 80, tomato: 20, ramen: 0, music: 0, grammy: 0 };
+            return { heart: 80, tomato: 20, ramen: 0, music: 0 };
         }
 
         if (this.heartsCaught < 30) {
-            return { heart: 70, tomato: 24, ramen: 3, music: 3, grammy: 0 };
+            return { heart: 70, tomato: 24, ramen: 3, music: 3 };
         }
 
         if (this.heartsCaught < 60) {
-            return { heart: 58, tomato: 34, ramen: 4, music: 4, grammy: 0 };
+            return { heart: 56, tomato: 36, ramen: 4, music: 4 };
         }
 
         if (this.heartsCaught < 100) {
-            return { heart: 43, tomato: 46, ramen: 5, music: 4, grammy: 2 };
+            return { heart: 40, tomato: 50, ramen: 5, music: 5 };
         }
 
         if (this.heartsCaught < 200) {
-            return { heart: 40, tomato: 48, ramen: 5, music: 5, grammy: 2 };
+            return { heart: 36, tomato: 54, ramen: 5, music: 5 };
         }
 
-        return { heart: 38, tomato: 50, ramen: 5, music: 5, grammy: 2 };
+        return { heart: 34, tomato: 56, ramen: 5, music: 5 };
     }
 
     chooseItemType() {
         const weights = this.getSpawnWeights();
-
-        if (!this.grammyUnlocked || this.grammySpawned || this.grammyCaught || this.chaosModeActive || this.isSpecialEventBlocked()) {
-            weights.grammy = 0;
-        }
-
-        const total = weights.heart + weights.tomato + weights.ramen + weights.music + weights.grammy;
+        const total = weights.heart + weights.tomato + weights.ramen + weights.music;
 
         if (total <= 0) return 'heart';
 
@@ -1849,40 +1688,39 @@ export class Start extends Phaser.Scene {
         roll -= weights.tomato;
 
         if (roll <= weights.ramen) return 'ramen';
-        roll -= weights.ramen;
 
-        if (roll <= weights.music) return 'music';
-
-        return 'grammy';
+        return 'music';
     }
 
-    maybeQueueLays() {
-        if (this.isSpecialEventBlocked()) return;
+    maybeTriggerLays() {
+        if (this.luvBombActive || this.laysEventActive) return;
+        if (this.time.now < this.bonusDelayUntil) return;
 
-        if (this.heartsCaught >= 100 && !this.laysUnlocked) {
-            this.laysUnlocked = true;
-
-            this.time.delayedCall(2600, () => {
-                if (this.isGameOver || this.chaosModeActive || this.laysRegularSpawnConsumed || this.laysForcedSpawnPending || this.isSpecialEventBlocked()) return;
-                this.laysForcedSpawnPending = true;
-            });
-        }
-
-        if (this.chaosModeActive) {
-            if (this.heartsCaught >= this.nextChaosLaysAt && !this.laysForcedSpawnPending && !this.isSpecialEventBlocked()) {
-                this.laysForcedSpawnPending = true;
-                this.nextChaosLaysAt += 150;
+        for (let i = 0; i < this.laysThresholds.length; i++) {
+            const threshold = this.laysThresholds[i];
+            if (this.heartsCaught >= threshold && !this.laysSpawnedAt[threshold]) {
+                this.triggerLaysEvent(threshold);
+                return;
             }
         }
     }
 
     maybeTriggerLuvBomb() {
-        const triggers = [150, 500];
+        const triggers = [150, 600];
+
+        if (this.lastLuvBombScore && this.heartsCaught < this.lastLuvBombScore + 200) {
+            return;
+        }
 
         for (let i = 0; i < triggers.length; i++) {
             const threshold = triggers[i];
-            if (this.heartsCaught >= threshold && !this.luvBombShownAt[threshold]) {
+            if (
+                this.heartsCaught >= threshold &&
+                !this.luvBombShownAt[threshold] &&
+                !this.laysEventActive
+            ) {
                 this.luvBombShownAt[threshold] = true;
+                this.lastLuvBombScore = this.heartsCaught;
                 this.activateLuvBomb();
                 return;
             }
@@ -1935,8 +1773,11 @@ export class Start extends Phaser.Scene {
                 this.showFloatingScore('+1');
             }
 
-            this.maybeQueueLays();
-            this.maybeTriggerLuvBomb();
+            if (!this.luvBombActive) {
+                this.maybeTriggerLays();
+                this.maybeTriggerLuvBomb();
+            }
+
             return;
         }
 
@@ -1955,8 +1796,8 @@ export class Start extends Phaser.Scene {
             this.showPlayerReaction('bonus');
             this.triggerVibration([80, 40, 120]);
 
-            this.maybeQueueLays();
             this.maybeTriggerLuvBomb();
+            this.maybeTriggerLays();
             return;
         }
 
@@ -1966,8 +1807,18 @@ export class Start extends Phaser.Scene {
             this.lives += value;
             this.updateLivesDisplay();
             this.showGrammySparkles(x, y);
-            this.showCenteredFloatingScore(hadMissingLife ? 'Heart Healed!' : 'Love Boost!');
+
+            this.pendingAnnouncements.push({
+                type: 'boost',
+                title: hadMissingLife ? 'Heart Healed!' : 'Love Boost!',
+                subtext: hadMissingLife ? 'One Life Restored' : 'One Extra Life Gained'
+            });
+            this.playNextAnnouncement();
+
+            this.showPlayerReaction('bonus');
             this.triggerVibration([60, 30, 60]);
+
+            this.laysEventActive = false;
             return;
         }
 
@@ -1985,8 +1836,7 @@ export class Start extends Phaser.Scene {
     }
 
     activateLuvBomb() {
-        if (this.isGameOver) return;
-        if (this.luvBombActive) return;
+        if (this.isGameOver || this.luvBombActive) return;
 
         if (this.luvBombTimer) {
             this.luvBombTimer.remove(false);
@@ -2000,9 +1850,9 @@ export class Start extends Phaser.Scene {
 
         this.applyCurrentBaseShipTexture();
         this.startLuvBombRainbowEffect();
-        this.showLuvBombMessage();
+        this.queueLuvBombMessage();
 
-        this.time.delayedCall(250, () => {
+        this.time.delayedCall(120, () => {
             if (!this.isGameOver && this.luvBombActive) {
                 this.resumeSpawnTimers();
             }
@@ -2028,6 +1878,7 @@ export class Start extends Phaser.Scene {
         this.burstRemainingHeartsIntoSparkles();
         this.clearAllFallingItems();
         this.stopLuvBombRainbowEffect();
+        this.stopLuvBombTextSparkles();
 
         if (this.luvBombMessageTween) {
             this.luvBombMessageTween.stop();
@@ -2043,69 +1894,106 @@ export class Start extends Phaser.Scene {
             this.applyCurrentBaseShipTexture();
         }
 
-        this.specialEventCooldownUntil = this.time.now + 2500;
-
-        this.time.delayedCall(420, () => {
+        this.time.delayedCall(320, () => {
             if (!this.isGameOver) {
                 this.resumeSpawnTimers();
             }
         });
     }
 
-    showHeartCatchBurst(x, y) {
-        for (let i = 0; i < 4; i++) {
-            const heartKey = Phaser.Utils.Array.GetRandom(this.heartKeys);
-            const burst = this.add.image(
-                x + Phaser.Math.Between(-8, 8),
-                y + Phaser.Math.Between(-8, 8),
-                heartKey
-            ).setScale(0.11).setDepth(2400);
+    clearAllFallingItems() {
+        this.items.children.iterate((item) => {
+            if (!item || !item.active) return;
 
-            this.tweens.add({
-                targets: burst,
-                x: burst.x + Phaser.Math.Between(-22, 22),
-                y: burst.y + Phaser.Math.Between(-24, 8),
-                alpha: 0,
-                angle: Phaser.Math.Between(-25, 25),
-                duration: 420,
-                onComplete: () => burst.destroy()
-            });
+            if (item.glowSprite && item.glowSprite.active) {
+                item.glowSprite.destroy();
+            }
+
+            item.destroy();
+        });
+    }
+
+    burstRemainingHeartsIntoSparkles() {
+        this.items.children.iterate((item) => {
+            if (!item || !item.active) return;
+            if (item.itemType !== 'heart') return;
+
+            for (let i = 0; i < 10; i++) {
+                const heartKey = Phaser.Utils.Array.GetRandom(this.heartKeys);
+                const burst = this.add.image(
+                    item.x + Phaser.Math.Between(-18, 18),
+                    item.y + Phaser.Math.Between(-18, 18),
+                    heartKey
+                ).setScale(0.2).setDepth(2600);
+
+                this.tweens.add({
+                    targets: burst,
+                    x: burst.x + Phaser.Math.Between(-42, 42),
+                    y: burst.y + Phaser.Math.Between(-46, 28),
+                    alpha: 0,
+                    angle: Phaser.Math.Between(-50, 50),
+                    duration: 520,
+                    onComplete: () => burst.destroy()
+                });
+            }
+        });
+    }
+
+    startLuvBombRainbowEffect() {
+        if (this.luvBombRainbowTimer) {
+            this.luvBombRainbowTimer.remove(false);
+            this.luvBombRainbowTimer = null;
+        }
+
+        if (!this.ship || !this.ship.active) return;
+
+        let colorIndex = 0;
+
+        this.luvBombRainbowTimer = this.time.addEvent({
+            delay: 90,
+            loop: true,
+            callback: () => {
+                if (!this.ship || !this.ship.active || !this.luvBombActive) return;
+                this.ship.setTint(this.rainbowCycleColors[colorIndex]);
+                colorIndex = (colorIndex + 1) % this.rainbowCycleColors.length;
+            }
+        });
+    }
+
+    stopLuvBombRainbowEffect() {
+        if (this.luvBombRainbowTimer) {
+            this.luvBombRainbowTimer.remove(false);
+            this.luvBombRainbowTimer = null;
+        }
+
+        if (this.ship && this.ship.active) {
+            this.ship.clearTint();
         }
     }
 
-    showLevelMessage(text) {
-        if (!this.canShowLevelMessage()) {
-            this.pendingLevelMessage = text;
-            return;
+    showHeartCatchBurst(x, y) {
+        const count = this.luvBombActive ? 10 : 4;
+        const scale = this.luvBombActive ? 0.17 : 0.11;
+        const drift = this.luvBombActive ? 34 : 22;
+
+        for (let i = 0; i < count; i++) {
+            const heartKey = Phaser.Utils.Array.GetRandom(this.heartKeys);
+            const burst = this.add.image(
+                x + Phaser.Math.Between(-10, 10),
+                y + Phaser.Math.Between(-10, 10),
+                heartKey
+            ).setScale(scale).setDepth(2400);
+
+            this.tweens.add({
+                targets: burst,
+                x: burst.x + Phaser.Math.Between(-drift, drift),
+                y: burst.y + Phaser.Math.Between(-drift - 6, 10),
+                alpha: 0,
+                angle: Phaser.Math.Between(-28, 28),
+                duration: this.luvBombActive ? 560 : 420,
+                onComplete: () => burst.destroy()
+            });
         }
-
-        if (this.activeLevelMessage && this.activeLevelMessage.active) {
-            this.activeLevelMessage.destroy();
-        }
-
-        const levelText = this.add.text(180, 96, text, {
-            fontSize: '24px',
-            color: '#ffff66',
-            stroke: '#000000',
-            strokeThickness: 6,
-            shadow: { offsetX: 0, offsetY: 0, color: '#ff69b4', blur: 16, fill: true }
-        }).setOrigin(0.5).setDepth(2600);
-
-        this.activeLevelMessage = levelText;
-
-        this.tweens.add({
-            targets: levelText,
-            alpha: 0,
-            scale: 1.05,
-            delay: 2200,
-            duration: 500,
-            onComplete: () => {
-                if (levelText && levelText.active) levelText.destroy();
-                if (this.activeLevelMessage === levelText) {
-                    this.activeLevelMessage = null;
-                }
-            }
-        });
     }
 
     showLuvBombMessage() {
@@ -2118,15 +2006,26 @@ export class Start extends Phaser.Scene {
             this.luvBombMessageText.destroy();
         }
 
-        this.luvBombMessageText = this.add.text(180, 96, 'LUV BOMB ATTACK!', {
-            fontFamily: 'Arial',
-            fontSize: '28px',
+        this.luvBombMessageText = this.add.text(180, 220, 'LUV BOMB\nATTACK!!!', {
+            fontFamily: '"Arial Black", "Comic Sans MS", cursive',
+            fontSize: '30px',
             fontStyle: 'bold',
             color: '#ff7ecf',
-            stroke: '#000000',
+            stroke: '#6d3bb8',
             strokeThickness: 6,
-            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 10, fill: true }
-        }).setOrigin(0.5).setDepth(2600).setAlpha(1);
+            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 3, fill: true }
+        }).setOrigin(0.5).setDepth(2600).setScale(0.9);
+
+        this.tweens.add({
+            targets: this.luvBombMessageText,
+            scale: 1.04,
+            duration: 110,
+            yoyo: true,
+            repeat: 4,
+            ease: 'Back.Out'
+        });
+
+        this.startLuvBombTextSparkles();
 
         this.luvBombMessageTween = this.tweens.add({
             targets: this.luvBombMessageText,
@@ -2134,12 +2033,166 @@ export class Start extends Phaser.Scene {
             duration: this.luvBombDuration,
             ease: 'Linear',
             onComplete: () => {
+                this.stopLuvBombTextSparkles();
+
                 if (this.luvBombMessageText && this.luvBombMessageText.active) {
                     this.luvBombMessageText.destroy();
                 }
 
                 this.luvBombMessageText = null;
                 this.luvBombMessageTween = null;
+                this.announcementActive = false;
+                this.playNextAnnouncement();
+            }
+        });
+    }
+
+    startLuvBombTextSparkles() {
+        this.stopLuvBombTextSparkles();
+
+        this.luvBombSparkleTimer = this.time.addEvent({
+            delay: 170,
+            loop: true,
+            callback: () => {
+                if (!this.luvBombMessageText || !this.luvBombMessageText.active || !this.luvBombActive) return;
+
+                const sparkle = this.add.text(
+                    180 + Phaser.Math.Between(-115, 115),
+                    220 + Phaser.Math.Between(-26, 26),
+                    Phaser.Math.Between(0, 1) === 0 ? '✨' : '💖',
+                    { fontSize: `${Phaser.Math.Between(14, 20)}px` }
+                ).setOrigin(0.5).setDepth(2601);
+
+                this.tweens.add({
+                    targets: sparkle,
+                    y: sparkle.y - Phaser.Math.Between(10, 26),
+                    x: sparkle.x + Phaser.Math.Between(-10, 10),
+                    alpha: 0,
+                    duration: 520,
+                    onComplete: () => sparkle.destroy()
+                });
+            }
+        });
+    }
+
+    stopLuvBombTextSparkles() {
+        if (this.luvBombSparkleTimer) {
+            this.luvBombSparkleTimer.remove(false);
+            this.luvBombSparkleTimer = null;
+        }
+    }
+
+    // restored to plain non-cursive style
+    showTopLifeMessage(title, subtext) {
+        const titleText = this.add.text(180, 180, title, {
+            fontSize: '24px',
+            color: '#ff8fd8',
+            stroke: '#6d3bb8',
+            strokeThickness: 8,
+            shadow: { offsetX: 0, offsetY: 0, color: '#ffffff', blur: 2, fill: true }
+        }).setOrigin(0.5).setDepth(2600);
+
+        const subText = this.add.text(180, 210, subtext, {
+            fontSize: '14px',
+            align: 'center',
+            color: '#ffffff',
+            fontStyle: 'bold'
+        }).setOrigin(0.5).setDepth(2600);
+
+        this.activeLevelMessage = titleText;
+        this.activeLevelSubMessage = subText;
+        this.activeCenterMessage = titleText;
+
+        this.tweens.add({
+            targets: [titleText, subText],
+            alpha: 0,
+            delay: 3200,
+            duration: 700,
+            onComplete: () => {
+                if (this.activeCenterMessage === titleText) {
+                    this.activeCenterMessage = null;
+                }
+                if (this.activeLevelMessage === titleText) {
+                    this.activeLevelMessage = null;
+                }
+                if (this.activeLevelSubMessage === subText) {
+                    this.activeLevelSubMessage = null;
+                }
+
+                titleText.destroy();
+                subText.destroy();
+
+                this.announcementActive = false;
+                this.playNextAnnouncement();
+            }
+        });
+    }
+
+    // restored to plain non-cursive style
+    showLevelMessage(text, shouldPulse = false, isFlowState = false) {
+        const levelText = this.add.text(180, 96, text, {
+            fontSize: '23px',
+            align: 'center',
+            color: isFlowState ? '#ff8cf5' : '#ffff66',
+            stroke: '#6d3bb8',
+            strokeThickness: 10,
+            shadow: {
+                offsetX: 0,
+                offsetY: 0,
+                color: '#ff69b4',
+                blur: 16,
+                fill: true
+            }
+        }).setOrigin(0.5).setDepth(2600);
+
+        this.activeLevelMessage = levelText;
+
+        if (shouldPulse) {
+            this.tweens.add({
+                targets: levelText,
+                scale: { from: 1, to: 1.08 },
+                duration: 320,
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+        }
+
+        let rainbowTimer = null;
+
+        if (isFlowState) {
+            let colorIndex = 0;
+            const flowTextColors = ['#ff8cf5', '#ffd36b', '#fff77c', '#9dff8c', '#7df9ff', '#9d8cff'];
+
+            rainbowTimer = this.time.addEvent({
+                delay: 120,
+                loop: true,
+                callback: () => {
+                    if (!levelText || !levelText.active) return;
+                    levelText.setColor(flowTextColors[colorIndex]);
+                    colorIndex = (colorIndex + 1) % flowTextColors.length;
+                }
+            });
+        }
+
+        this.tweens.add({
+            targets: levelText,
+            alpha: 0,
+            delay: shouldPulse ? 5000 : 3000,
+            duration: 700,
+            onComplete: () => {
+                if (rainbowTimer) {
+                    rainbowTimer.remove(false);
+                }
+                if (levelText && levelText.active) {
+                    levelText.destroy();
+                }
+                if (this.activeLevelMessage === levelText) {
+                    this.activeLevelMessage = null;
+                }
+
+                this.announcementActive = false;
+                this.playNextAnnouncement();
             }
         });
     }
@@ -2297,71 +2350,267 @@ export class Start extends Phaser.Scene {
         }
     }
 
-    updateFallSpeedByHearts() {
-        let speed = 2;
+    startFlowStateEdgeTrace() {
+        this.stopFlowStateEdgeTrace();
 
-        if (this.heartsCaught >= 5) speed = 4;
-        if (this.heartsCaught >= 20) speed = 5;
-        if (this.heartsCaught >= 30) speed = 6;
-        if (this.heartsCaught >= 60) speed = 7;
-        if (this.heartsCaught >= 100) speed = 8;
-        if (this.heartsCaught >= 200) speed = 9;
-        if (this.heartsCaught >= 300) speed = 10;
+        const depth = 2800;
 
-        if (this.chaosModeActive) {
-            speed = 10;
-            if (this.heartsCaught >= 1050) speed = 11;
-            if (this.heartsCaught >= 1150) speed = 12;
-            if (this.heartsCaught >= 1250) speed = 13;
+        const top = this.add.rectangle(180, 7, 360, 10, 0xff8cf5, 0.58).setDepth(depth);
+        const bottom = this.add.rectangle(180, 633, 360, 10, 0xff8cf5, 0.58).setDepth(depth);
+        const left = this.add.rectangle(7, 320, 10, 640, 0xff8cf5, 0.58).setDepth(depth);
+        const right = this.add.rectangle(353, 320, 10, 640, 0xff8cf5, 0.58).setDepth(depth);
+
+        this.flowEdgeRects = [top, bottom, left, right];
+
+        this.flowEdgeTween = this.tweens.add({
+            targets: this.flowEdgeRects,
+            alpha: { from: 0.28, to: 0.88 },
+            duration: 170,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        let colorIndex = 0;
+        this.flowEdgeColorTimer = this.time.addEvent({
+            delay: 120,
+            loop: true,
+            callback: () => {
+                if (!this.flowEdgeRects.length) return;
+
+                const next = this.flowEdgeColors[colorIndex];
+                this.flowEdgeRects.forEach((rect) => {
+                    rect.setFillStyle(next, rect.alpha);
+                });
+
+                colorIndex = (colorIndex + 1) % this.flowEdgeColors.length;
+
+                const side = Phaser.Math.Between(0, 3);
+                let x = 180;
+                let y = 320;
+
+                if (side === 0) {
+                    x = Phaser.Math.Between(20, 340);
+                    y = 10;
+                } else if (side === 1) {
+                    x = Phaser.Math.Between(20, 340);
+                    y = 630;
+                } else if (side === 2) {
+                    x = 10;
+                    y = Phaser.Math.Between(20, 620);
+                } else {
+                    x = 350;
+                    y = Phaser.Math.Between(20, 620);
+                }
+
+                const spark = this.add.text(x, y, '⚡', {
+                    fontSize: '14px',
+                    color: '#ffffff',
+                    stroke: '#6d3bb8',
+                    strokeThickness: 3
+                }).setOrigin(0.5).setDepth(depth + 2);
+
+                this.tweens.add({
+                    targets: spark,
+                    alpha: 0,
+                    scale: 1.35,
+                    duration: 220,
+                    onComplete: () => spark.destroy()
+                });
+            }
+        });
+    }
+
+    stopFlowStateEdgeTrace() {
+        if (this.flowEdgeTween) {
+            this.flowEdgeTween.stop();
+            this.flowEdgeTween = null;
         }
 
-        this.currentFallSpeed = speed;
+        if (this.flowEdgeColorTimer) {
+            this.flowEdgeColorTimer.remove(false);
+            this.flowEdgeColorTimer = null;
+        }
+
+        this.flowEdgeRects.forEach((rect) => {
+            if (rect && rect.active) rect.destroy();
+        });
+
+        this.flowEdgeRects = [];
+    }
+
+    startChaosModeEdgeTrace() {
+        this.stopChaosModeEdgeTrace();
+
+        const depth = 2850;
+
+        const top = this.add.rectangle(180, 7, 360, 12, 0xff3b1f, 0.72).setDepth(depth);
+        const bottom = this.add.rectangle(180, 633, 360, 12, 0xff3b1f, 0.72).setDepth(depth);
+        const left = this.add.rectangle(7, 320, 12, 640, 0xff3b1f, 0.72).setDepth(depth);
+        const right = this.add.rectangle(353, 320, 12, 640, 0xff3b1f, 0.72).setDepth(depth);
+
+        this.chaosEdgeRects = [top, bottom, left, right];
+
+        this.chaosEdgeTween = this.tweens.add({
+            targets: this.chaosEdgeRects,
+            alpha: { from: 0.32, to: 0.95 },
+            duration: 130,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        let colorIndex = 0;
+        this.chaosEdgeColorTimer = this.time.addEvent({
+            delay: 110,
+            loop: true,
+            callback: () => {
+                if (!this.chaosEdgeRects.length) return;
+
+                const next = this.chaosEdgeColors[colorIndex];
+                this.chaosEdgeRects.forEach((rect) => {
+                    rect.setFillStyle(next, rect.alpha);
+                });
+
+                colorIndex = (colorIndex + 1) % this.chaosEdgeColors.length;
+
+                const side = Phaser.Math.Between(0, 3);
+                let x = 180;
+                let y = 320;
+
+                if (side === 0) {
+                    x = Phaser.Math.Between(20, 340);
+                    y = 10;
+                } else if (side === 1) {
+                    x = Phaser.Math.Between(20, 340);
+                    y = 630;
+                } else if (side === 2) {
+                    x = 10;
+                    y = Phaser.Math.Between(20, 620);
+                } else {
+                    x = 350;
+                    y = Phaser.Math.Between(20, 620);
+                }
+
+                const spark = this.add.text(
+                    x,
+                    y,
+                    Phaser.Math.Between(0, 1) === 0 ? '🔥' : '✦',
+                    {
+                        fontSize: '14px',
+                        color: '#ffd27a',
+                        stroke: '#5c0000',
+                        strokeThickness: 3
+                    }
+                ).setOrigin(0.5).setDepth(depth + 2);
+
+                this.tweens.add({
+                    targets: spark,
+                    alpha: 0,
+                    scale: 1.3,
+                    duration: 220,
+                    onComplete: () => spark.destroy()
+                });
+            }
+        });
+    }
+
+    stopChaosModeEdgeTrace() {
+        if (this.chaosEdgeTween) {
+            this.chaosEdgeTween.stop();
+            this.chaosEdgeTween = null;
+        }
+
+        if (this.chaosEdgeColorTimer) {
+            this.chaosEdgeColorTimer.remove(false);
+            this.chaosEdgeColorTimer = null;
+        }
+
+        this.chaosEdgeRects.forEach((rect) => {
+            if (rect && rect.active) rect.destroy();
+        });
+
+        this.chaosEdgeRects = [];
+    }
+
+    updateFallSpeedByHearts() {
+        if (this.chaosModeActive) {
+            this.currentFallSpeed = 10;
+            return;
+        }
+
+        if (this.heartsCaught >= 200) {
+            this.currentFallSpeed = 9;
+            return;
+        }
+
+        if (this.heartsCaught >= 100) {
+            this.currentFallSpeed = 8;
+            return;
+        }
+
+        if (this.heartsCaught >= 60) {
+            this.currentFallSpeed = 7;
+            return;
+        }
+
+        if (this.heartsCaught >= 30) {
+            this.currentFallSpeed = 6;
+            return;
+        }
+
+        if (this.heartsCaught >= 20) {
+            this.currentFallSpeed = 5;
+            return;
+        }
+
+        if (this.heartsCaught >= 5) {
+            this.currentFallSpeed = 4;
+            return;
+        }
+
+        this.currentFallSpeed = 2;
     }
 
     checkLevelProgress() {
         this.updateFallSpeedByHearts();
-        this.maybeQueueLays();
-        this.maybeTriggerLuvBomb();
-
-        if (!this.luvBombActive && !this.activeCenterMessage && !this.activeLevelMessage && this.pendingLevelMessage) {
-            const pending = this.pendingLevelMessage;
-            this.pendingLevelMessage = null;
-            this.showLevelMessage(pending);
-        }
 
         if (this.heartsCaught >= 950 && !this.chaosShown) {
             this.chaosShown = true;
             this.chaosModeActive = true;
+            this.flowStateActive = false;
             this.currentLevelName = 'Chaos Mode';
             this.background.setTexture('backgroundgames4');
-            this.queueOrShowLevelMessage('CHAOS MODE');
+            this.stopFlowStateEdgeTrace();
+            this.startChaosModeEdgeTrace();
+            this.queueOrShowLevelMessage('Chaos Mode\nLevel Reached!', false);
             return;
         }
 
-        if (this.heartsCaught >= 300 && !this.flowStateShown) {
+        if (this.heartsCaught >= 500 && !this.flowStateShown) {
             this.flowStateShown = true;
             this.flowStateActive = true;
             this.currentLevelName = 'Flow State';
             this.background.setTexture('backgroundgames3');
-            this.queueOrShowLevelMessage('FLOW STATE REACHED!');
+            this.startFlowStateEdgeTrace();
+            this.queueOrShowLevelMessage('Flow State\nLevel Reached!', true, true);
             return;
         }
 
-        if (this.heartsCaught >= 200 && !this.legendaryShown) {
+        if (this.heartsCaught >= 350 && !this.legendaryShown) {
             this.legendaryShown = true;
             this.currentLevelName = 'Legendary';
-            this.queueOrShowLevelMessage('LEGENDARY REACHED!');
+            this.queueOrShowLevelMessage('Legendary\nLevel Reached!', false);
             return;
         }
 
         if (this.heartsCaught >= 100 && !this.iconLevelShown) {
             this.iconLevelShown = true;
-            this.currentLevelName = 'Icon Level';
+            this.currentLevelName = 'ICON';
             this.grammyUnlocked = true;
-            this.grammyForcedSpawnPending = !this.isSpecialEventBlocked();
-            this.queueOrShowLevelMessage('ICON LEVEL REACHED!');
+            this.queueOrShowLevelMessage('ICON\nLevel Reached!', false);
 
-            if (this.gameStarted && !this.isGameOver && !this.grammySpawned && !this.grammyCaught && !this.isSpecialEventBlocked()) {
+            if (this.gameStarted && !this.isGameOver && !this.grammyEventStarted) {
                 this.triggerGrammyEvent();
             }
             return;
@@ -2371,23 +2620,26 @@ export class Start extends Phaser.Scene {
             this.superStarShown = true;
             this.currentLevelName = 'Super Star';
             this.background.setTexture('backgroundgames2');
-            this.queueOrShowLevelMessage('SUPER STAR REACHED!');
+            this.queueOrShowLevelMessage('Super Star\nLevel Reached!', false);
             return;
         }
 
         if (this.heartsCaught >= 30 && !this.starLevelShown) {
             this.starLevelShown = true;
             this.currentLevelName = 'Star';
-            this.queueOrShowLevelMessage('STAR REACHED!');
+            this.queueOrShowLevelMessage('Star Level Reached!', false);
             return;
         }
 
         if (this.heartsCaught >= 15 && !this.risingStarShown) {
             this.risingStarShown = true;
             this.currentLevelName = 'Rising Star';
-            this.queueOrShowLevelMessage('RISING STAR REACHED!');
+            this.queueOrShowLevelMessage('Rising Star\nLevel Reached!', false);
             return;
         }
+
+        this.maybeTriggerLays();
+        this.maybeTriggerLuvBomb();
     }
 
     updateHighScore() {
@@ -2409,7 +2661,7 @@ export class Start extends Phaser.Scene {
                 return { color: '#fff47a', stroke: '#7d6700', size: '22px' };
             case 'Super Star':
                 return { color: '#ffd700', stroke: '#6c5200', size: '23px' };
-            case 'Icon Level':
+            case 'ICON':
                 return { color: '#ff7ac7', stroke: '#5a143d', size: '23px' };
             case 'Legendary':
                 return { color: '#b98aff', stroke: '#341362', size: '24px' };
@@ -2468,6 +2720,8 @@ export class Start extends Phaser.Scene {
         }
 
         this.endLuvBomb();
+        this.stopFlowStateEdgeTrace();
+        this.stopChaosModeEdgeTrace();
 
         this.items.children.iterate((item) => {
             if (item && item.glowSprite && item.glowSprite.active) {
@@ -2638,9 +2892,9 @@ export class Start extends Phaser.Scene {
 
     getFinalLevelName() {
         if (this.heartsCaught >= 950) return 'Chaos Mode';
-        if (this.heartsCaught >= 300) return 'Flow State';
-        if (this.heartsCaught >= 200) return 'Legendary';
-        if (this.heartsCaught >= 100) return 'Icon Level';
+        if (this.heartsCaught >= 500) return 'Flow State';
+        if (this.heartsCaught >= 350) return 'Legendary';
+        if (this.heartsCaught >= 100) return 'ICON';
         if (this.heartsCaught >= 60) return 'Super Star';
         if (this.heartsCaught >= 30) return 'Star';
         if (this.heartsCaught >= 15) return 'Rising Star';
